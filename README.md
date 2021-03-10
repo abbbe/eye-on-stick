@@ -1,3 +1,9 @@
+Colab install:
+```
+!pip install -r https://raw.githubusercontent.com/abbbe/eye-on-stick/main/requirements.txt
+```
+
+Local install:
 ```
 ENV=eos
 conda create -y -n $ENV python=3.6
@@ -8,7 +14,7 @@ pip install -r requirements.txt
 If you have Visual Studio Code, at this point you can already run eye-on-stick.ipynb, see rendered env view and growing eye-on-stick.log.
 Otherwise install and run Jupyter Lab, for example:
 
-Dev (optional)
+Local dev (optional)
 ```
 conda install -y -c conda-forge nodejs
 pip install -r requirements-dev.txt
