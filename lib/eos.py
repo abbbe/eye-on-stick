@@ -2,7 +2,6 @@ import numpy as np
 
 import gym
 from gym import spaces
-from stable_baselines import PPO2, ACKTR
 
 import mlflow
 from PIL import Image, ImageDraw
@@ -68,19 +67,11 @@ PHI_AMP = np.pi/2
 DPHI_AMP = 10
 DPHI = np.pi/360
 
-N_GOALS = 1000 # FIXME
-REWARD_AIM_CLIP = 10
-N_STEPS = 100
+N_ERAS = 10 # eras 
+N_STEPS = 100 # steps each
 
-N_ENVS = 32
+N_ENVS = 4
 N_LEARN_EPOCHS = 2000 * N_ENVS
-
-#policy=ACKTR
-
-POLICY_CLASS = PPO2
-MODEL_NAME = 'MlpLnLstmPolicy'
-
-
 
 class EyeOnStickEnv(gym.Env):    
     metadata = {'render.modes': ['rgb_array']}
@@ -89,14 +80,17 @@ class EyeOnStickEnv(gym.Env):
     ACC_ZERO = 1
     ACC_MINUS = 0
     
-    def __init__(self):
+    def __init__(self, N_JOINTS, N_SEGS):
         super(EyeOnStickEnv, self).__init__()
         self.base_x = 0
         self.base_y = 0
         self.stick_len = 1.0
+        
+        self.N_JOINTS = N_JOINTS
+        self.N_SEGS = N_SEGS
 
-        self.action_space = spaces.Discrete(3)
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-1, high=1, shape=(self.N_JOINTS,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-1, high=1, shape=(3 + self.N_JOINTS,), dtype=np.float32)
         
         self.nresets = 0
         self.nsteps = 0
@@ -105,10 +99,10 @@ class EyeOnStickEnv(gym.Env):
     
     def reset_pose(self):
         # the stick is randomly oriented, but stationary
-        self.phi = 0 # np.random.uniform(low=-np.pi/2, high=np.pi/2)
+        self.phi = np.zeros((self.N_JOINTS)) # np.random.uniform(low=-np.pi/2, high=np.pi/2)
         self.phi_min = self.phi - PHI_AMP
         self.phi_max = self.phi + PHI_AMP
-        self.dphi = 0
+        self.dphi = np.zeros((self.N_JOINTS))
         
         self._recalc()
     
@@ -117,7 +111,6 @@ class EyeOnStickEnv(gym.Env):
         self.nsteps = 0
         self.actions_log = ""
         self.info = dict()
-        self.n_goals = 0
 
         # set random target location
         self.target_x = np.random.uniform(low=X_LOW, high=X_HIGH)
@@ -126,6 +119,8 @@ class EyeOnStickEnv(gym.Env):
         self.target_vy = np.random.uniform(low=VY_LOW, high=VY_HIGH)
         self.phi_k = 1 # np.random.uniform(low=0.75, high=1.25) * np.random.choice([-1, 1])
         
+        self.joints = np.zeros((self.N_JOINTS + 1, 2))
+
         if reset_pose:
             self.reset_pose()
             # _recalc() is done by reset_pose()
@@ -135,69 +130,76 @@ class EyeOnStickEnv(gym.Env):
         return self.get_obs()
     
     def _recalc(self):    
-        # eye observes target as projection on retina
-        self.eye_x = self.stick_len * np.cos(self.phi)
-        self.eye_y = self.stick_len * np.sin(self.phi)
-        self.eye_phi = self.phi
+        for i in range(1, self.N_JOINTS):
+            self.phi[l] += self.phi[l - 1]
+            self.joints[l, 0] = self.joints[l - 1, 0] + self.stick_len * np.cos(self.phi[l])
+            self.joints[l, 1] = self.joints[l - 1, 1] + self.stick_len * np.sin(self.phi[l])
+
+        self.eye_x = self.joints[-1][0]
+        self.eye_y = self.joints[-1][1]        
+        self.eye_phi = self.phi[-1]
         
         dx = self.target_x - self.eye_x
         dy = self.target_y - self.eye_y
         self.alpha = np.arctan2(dy, dx) - self.eye_phi
               
     def get_obs(self):
-        return np.array([np.sin(self.alpha), np.cos(self.alpha), self.alpha / PHI_AMP, self.dphi / DPHI_AMP]).astype(np.float32)
+        return np.array([
+            np.sin(self.alpha), np.cos(self.alpha), self.alpha / PHI_AMP,
+            self.dphi / DPHI_AMP
+        ]).astype(np.float32)
     
-    def step(self, action):
+    def step(self, actions):
         self.nsteps += 1
         
+        # target moves
         self.target_x += self.target_vx
         self.target_y += self.target_vy
+
+        #print(f'actions 1 ={actions}')
+        #if not isinstance(actions, list):
+        #    actions = [actions]
+        actions = np.array(actions)
+        #print(f'actions 2 ={actions}')
         
-        alpha_before = self.alpha
+        assert(actions.shape == self.dphi.shape)
+        
+        for i in range(actions.shape[0]):
+            if actions[i] > 0:
+                action_char = '+'
+                actions[i] = 1
+            elif actions[i] < 0:
+                action_char = '-'
+                actions[i] = -1
+            else:
+                action_char = 'o'
+                actions[i] = 0
+            self.actions_log += action_char
+            
+            self.dphi[i] += actions[i]
 
-        if action == self.ACC_PLUS:
-            self.dphi += 1
-            action_char = '+'
-        elif action == self.ACC_MINUS:
-            self.dphi -= 1
-            action_char = '-'
-        elif action == self.ACC_ZERO:
-            action_char = 'o'
-        else:
-            raise ValueError("Received invalid action={} which is not part of the action space".format(action))
+            #self.dphi[self.dphi > DPHI_AMP] = DPHI_AMP
+            #self.dphi[self.dphi < -DPHI_AMP] = -DPHI_AMP
 
-        self.actions_log += action_char
+            self.phi += self.dphi * DPHI * self.phi_k
+            
+            #phis_above_max = self.phi > self.phi_max
+            #phis_below_min = self.phi < self.phi_min
+            #self.phi[phis_above_max] = self.phi_max[phis_above_max]
+            #self.phi[phis_below_min] = self.phi_min[phis_below_min]
+
+        self.actions_log += ' '
         if len(self.actions_log) % 75 == 0:
             self.actions_log += '\n'
-
-        if self.dphi > DPHI_AMP:
-            self.dphi = DPHI_AMP
-        elif self.phi < -DPHI_AMP:
-            self.dphi = -DPHI_AMP
-            
-        self.phi += self.dphi * DPHI * self.phi_k
-        if self.phi > self.phi_max:
-            self.phi = self.phi_max
-            self.dphi = 0
-        elif self.phi < self.phi_min:
-            self.phi = self.phi_min
-            self.dphi = 0
             
         self._recalc()
                 
         reward_aim = - np.log(np.abs(self.alpha)) - 1 # goes below zero somewhere between 10 and 30 degrees
-        if reward_aim > REWARD_AIM_CLIP: # 3 - clip to below one degree is perfect)
-            reward_aim = REWARD_AIM_CLIP
-        
-        if reward_aim > 2: # around 3 degrees
-            self.n_goals += 1
-        else:
-            self.n_goals = 0
-        
+
         reward = reward_aim
-        done = bool(self.n_goals > N_GOALS)
+        done = False
             
-        self.info = dict(n_goals=self.n_goals, reward_aim=f"{reward_aim:.2f}", alpha=self.alpha)
+        self.info = dict(reward_aim=f"{reward_aim:.2f}", alpha=self.alpha)
         return self.get_obs(), reward, done, self.info
 
 
@@ -233,8 +235,8 @@ class EyeOnStickEnv(gym.Env):
             draw.text(pos, txt, fill=TEXT_COLOR)
             
         draw_text((10, LINE_HEIGHT), "round %d, step %d" % (self.nresets, self.nsteps))
-        draw_text((10, 2*LINE_HEIGHT), "phi_k %.3f, phi %.3f, dphi %.3f, alpha %.3f" %
-                  (self.phi_k, self.phi, self.dphi, self.alpha))
+        draw_text((10, 2*LINE_HEIGHT), "phi %s, dphi %s, alpha %.3f" %
+                  (self.phi, self.dphi, self.alpha))
         draw_text((10, 3*LINE_HEIGHT), "info %s" % (str(self.info)))
         draw_text((10, 4*LINE_HEIGHT), self.actions_log)
             
