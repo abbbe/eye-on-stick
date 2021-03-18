@@ -1,3 +1,5 @@
 jupyterlab
 autopep8
 nbdime
+pyqt5
+qtconsole
