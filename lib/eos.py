@@ -64,13 +64,16 @@ STICK_COLOR = (0, 0, 255)
 STICK_LEN = 1.0
 STICK_WIDTH = 0.01
 
+BASE_X = -2
+BASE_Y = 0
+
 PHI_AMP = (np.pi/190) * 45 # angle: up to 45 degrees in total
 DPHI_AMP = (np.pi/180) * 5 # angular speed: up to 5 degrees per step
 
-N_ERAS = 25 # eras 
-N_STEPS = 200 # steps each
+N_ERAS = 150 # eras 
+N_STEPS = 1000 # steps each
 N_ENVS = 32
-N_LEARN_EPOCHS = 20000
+N_LEARN_EPOCHS = 2000
 
 class EyeOnStickEnv(gym.Env):    
     metadata = {'render.modes': ['rgb_array']}
@@ -81,8 +84,6 @@ class EyeOnStickEnv(gym.Env):
     
     def __init__(self, N_JOINTS, N_SEGS):
         super(EyeOnStickEnv, self).__init__()
-        self.base_x = 0
-        self.base_y = 0
         self.stick_len = 1.0
         
         self.N_JOINTS = N_JOINTS
@@ -109,7 +110,7 @@ class EyeOnStickEnv(gym.Env):
 
         self.last_actions = []
         self.actions_log = ""
-        self.info = dict()
+        self.info = dict(info='')
 
         # set random target location
         self.target_x = np.random.uniform(low=X_LOW, high=X_HIGH)
@@ -119,6 +120,7 @@ class EyeOnStickEnv(gym.Env):
         self.phi_k = 1 # np.random.uniform(low=0.75, high=1.25) * np.random.choice([-1, 1])
         
         self.joints = np.zeros((self.N_JOINTS + 1, 2))
+        self.joints[0] = [BASE_X, BASE_Y]
 
         if reset_pose:
             self.reset_pose()
@@ -159,7 +161,7 @@ class EyeOnStickEnv(gym.Env):
         self.target_y += self.target_vy
         
         # episode over if target goes out of range
-        done = False # bool(self.target_x < X_LOW or self.target_x > X_HIGH or self.target_y < Y_LOW or self.target_y > Y_HIGH)
+        done = bool(self.target_x < X_LOW or self.target_x > X_HIGH or self.target_y < Y_LOW or self.target_y > Y_HIGH)
         
         # eos moves
         for i in range(actions.shape[0]):
@@ -196,7 +198,7 @@ class EyeOnStickEnv(gym.Env):
         reward = reward_aim + reward_action
             
         self.last_actions = actions
-        self.info = dict(reward=f"{reward:.2f}", reward_aim=f"{reward_aim:.2f}", reward_action=f"{reward_action:.2f}", alpha=self.alpha)
+        self.info = dict(alpha=self.alpha, info=f"reward={reward:6.4f}(aim={reward_aim:6.4f}, action={reward_action:6.4f}), alpha={self.alpha:6.4f}")
         return self.get_obs(), reward, done, self.info
 
 
@@ -231,10 +233,10 @@ class EyeOnStickEnv(gym.Env):
         def draw_text(pos, txt):
             draw.text(pos, txt, fill=TEXT_COLOR)
             
-        draw_text((10, LINE_HEIGHT), "round %d, step %d, last_actions %s" % (self.nresets, self.nsteps, self.last_actions))
+        draw_text((10, LINE_HEIGHT), "round %5d, step %5d, last_actions %s" % (self.nresets, self.nsteps, self.last_actions))
         draw_text((10, 2*LINE_HEIGHT), "phi %s, dphi %s, alpha %.3f" %
                   (self.phi, self.dphi, self.alpha))
-        draw_text((10, 3*LINE_HEIGHT), "info %s" % (str(self.info)))
+        draw_text((10, 3*LINE_HEIGHT), "info %s" % (str(self.info['info'])))
         draw_text((10, 4*LINE_HEIGHT), self.actions_log)
 
         x1 = self.joints[0, 0]
