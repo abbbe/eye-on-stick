@@ -54,24 +54,23 @@ BORDER_COLOR = (0, 128, 0)
 TEXT_COLOR = (0, 128, 0)
 LINE_HEIGHT = 15
 
-CIRCLE_SIZE = 0.05
 TARGET_CIRCLE_COLOR = (255, 0, 0)        
-EYE_CIRCLE_COLOR = (0, 0, 255)
-BASE_CIRCLE_COLOR = (0, 0, 255)
+TARGET_CIRCLE_SIZE = 0.05
 
+JOINT_CIRCLE_COLOR = (0, 0, 255)
+JOINT_CIRCLE_SIZE = 0.05
+
+STICK_COLOR = (0, 0, 255)
 STICK_LEN = 1.0
 STICK_WIDTH = 0.01
-STICK_COLOR = (0, 0, 255)
 
-PHI_AMP = np.pi/2
-DPHI_AMP = 10
-DPHI = np.pi/360
+PHI_AMP = (np.pi/190) * 45 # angle: up to 45 degrees in total
+DPHI_AMP = (np.pi/180) * 10 # angular speed: up to 5 degrees per step
 
 N_ERAS = 10 # eras 
 N_STEPS = 100 # steps each
-
-N_ENVS = 4
-N_LEARN_EPOCHS = 2000 * N_ENVS
+N_ENVS = 32
+N_LEARN_EPOCHS = 20000
 
 class EyeOnStickEnv(gym.Env):    
     metadata = {'render.modes': ['rgb_array']}
@@ -100,8 +99,6 @@ class EyeOnStickEnv(gym.Env):
     def reset_pose(self):
         # the stick is randomly oriented, but stationary
         self.phi = np.zeros((self.N_JOINTS)) # np.random.uniform(low=-np.pi/2, high=np.pi/2)
-        self.phi_min = self.phi - PHI_AMP
-        self.phi_max = self.phi + PHI_AMP
         self.dphi = np.zeros((self.N_JOINTS))
         
         self._recalc()
@@ -130,76 +127,73 @@ class EyeOnStickEnv(gym.Env):
         return self.get_obs()
     
     def _recalc(self):    
-        for i in range(1, self.N_JOINTS):
-            self.phi[l] += self.phi[l - 1]
-            self.joints[l, 0] = self.joints[l - 1, 0] + self.stick_len * np.cos(self.phi[l])
-            self.joints[l, 1] = self.joints[l - 1, 1] + self.stick_len * np.sin(self.phi[l])
+        angle = self.phi[0]
+        for i in range(1, self.N_JOINTS + 1):
+            angle += self.phi[i - 1]
+            self.joints[i, 0] = self.joints[i - 1, 0] + self.stick_len * np.cos(angle)
+            self.joints[i, 1] = self.joints[i - 1, 1] + self.stick_len * np.sin(angle)
 
         self.eye_x = self.joints[-1][0]
         self.eye_y = self.joints[-1][1]        
-        self.eye_phi = self.phi[-1]
+        self.eye_phi = angle
         
         dx = self.target_x - self.eye_x
         dy = self.target_y - self.eye_y
         self.alpha = np.arctan2(dy, dx) - self.eye_phi
               
     def get_obs(self):
-        return np.array([
-            np.sin(self.alpha), np.cos(self.alpha), self.alpha / PHI_AMP,
-            self.dphi / DPHI_AMP
-        ]).astype(np.float32)
+        alpha = np.array([np.sin(self.alpha), np.cos(self.alpha), self.alpha / PHI_AMP])
+        dphis = self.dphi / DPHI_AMP
+        return np.hstack((alpha, dphis)).astype(np.float32)
     
     def step(self, actions):
+        actions = np.array(actions)
+        assert(actions.shape == self.dphi.shape)
+        
         self.nsteps += 1
         
         # target moves
         self.target_x += self.target_vx
         self.target_y += self.target_vy
-
-        #print(f'actions 1 ={actions}')
-        #if not isinstance(actions, list):
-        #    actions = [actions]
-        actions = np.array(actions)
-        #print(f'actions 2 ={actions}')
+        # episode over if target goes out of range
+        done = bool(self.target_x < X_LOW or self.target_x > X_HIGH or self.target_y < Y_LOW or self.target_y > Y_HIGH)
         
-        assert(actions.shape == self.dphi.shape)
-        
+        # eos moves
         for i in range(actions.shape[0]):
             if actions[i] > 0:
                 action_char = '+'
-                actions[i] = 1
             elif actions[i] < 0:
                 action_char = '-'
-                actions[i] = -1
             else:
                 action_char = 'o'
-                actions[i] = 0
             self.actions_log += action_char
             
-            self.dphi[i] += actions[i]
+            self.dphi[i] += actions[i] * DPHI_AMP / 10
 
-            #self.dphi[self.dphi > DPHI_AMP] = DPHI_AMP
-            #self.dphi[self.dphi < -DPHI_AMP] = -DPHI_AMP
+            self.dphi[self.dphi > DPHI_AMP] = DPHI_AMP
+            self.dphi[self.dphi < -DPHI_AMP] = -DPHI_AMP
 
-            self.phi += self.dphi * DPHI * self.phi_k
+            self.phi += self.dphi
             
-            #phis_above_max = self.phi > self.phi_max
-            #phis_below_min = self.phi < self.phi_min
-            #self.phi[phis_above_max] = self.phi_max[phis_above_max]
-            #self.phi[phis_below_min] = self.phi_min[phis_below_min]
+            phis_above_max = self.phi > PHI_AMP
+            phis_below_min = self.phi < -PHI_AMP
+            self.phi[phis_above_max] = PHI_AMP
+            self.phi[phis_below_min] = -PHI_AMP
+            self.dphi[phis_above_max] = self.dphi[phis_below_min] = 0
 
         self.actions_log += ' '
-        if len(self.actions_log) % 75 == 0:
+        if self.nsteps % 27 == 0:
             self.actions_log += '\n'
             
         self._recalc()
                 
         reward_aim = - np.log(np.abs(self.alpha)) - 1 # goes below zero somewhere between 10 and 30 degrees
+        reward_action = - np.sum(np.square(actions))
 
-        reward = reward_aim
+        reward = reward_aim + reward_action
         done = False
             
-        self.info = dict(reward_aim=f"{reward_aim:.2f}", alpha=self.alpha)
+        self.info = dict(reward=f"{reward:.2f}", reward_aim=f"{reward_aim:.2f}", reward_action=f"{reward_action:.2f}", alpha=self.alpha)
         return self.get_obs(), reward, done, self.info
 
 
@@ -239,14 +233,23 @@ class EyeOnStickEnv(gym.Env):
                   (self.phi, self.dphi, self.alpha))
         draw_text((10, 3*LINE_HEIGHT), "info %s" % (str(self.info)))
         draw_text((10, 4*LINE_HEIGHT), self.actions_log)
+
+        x1 = self.joints[0, 0]
+        y1 = self.joints[0, 1]
+        draw_circle(x1, y1, JOINT_CIRCLE_SIZE, JOINT_CIRCLE_COLOR)
+        
+        for i in range(1, self.N_JOINTS+1):
+            x2 = self.joints[i, 0]
+            y2 = self.joints[i, 1]
+        
+            draw_line(x1, y1, x2, y2, STICK_COLOR, STICK_WIDTH)
+            draw_circle(x1, y1, JOINT_CIRCLE_SIZE, JOINT_CIRCLE_COLOR)
             
-        dx = self.stick_len * np.cos(self.eye_phi)
-        dy = self.stick_len * np.sin(self.eye_phi)
-        draw_circle(self.base_x, self.base_y, CIRCLE_SIZE, BASE_CIRCLE_COLOR)
-        draw_line(self.base_x, self.base_y, self.base_x + dx, self.base_y + dy, STICK_COLOR, STICK_WIDTH)
-        draw_circle(self.eye_x, self.eye_y, CIRCLE_SIZE, EYE_CIRCLE_COLOR)
-        draw_circle(self.target_x, self.target_y, CIRCLE_SIZE, TARGET_CIRCLE_COLOR)
+            x1 = x2
+            y1 = y2
                
+        draw_circle(self.target_x, self.target_y, TARGET_CIRCLE_SIZE, TARGET_CIRCLE_COLOR)
+        
         return np.asarray(image)
 
     def close(self):
