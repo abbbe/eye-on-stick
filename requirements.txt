@@ -1,3 +1,4 @@
 stable-baselines==2.10.0
 tensorflow<2
 ipykernel
+mlflow

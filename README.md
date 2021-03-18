@@ -1,8 +1,3 @@
-Colab install:
-```
-!pip install -r https://raw.githubusercontent.com/abbbe/eye-on-stick/main/requirements.txt
-```
-
 Local install:
 ```
 ENV=eos
@@ -11,14 +6,23 @@ conda activate $ENV
 pip install -r requirements.txt
 ```
 
-If you have Visual Studio Code, at this point you can already run eye-on-stick.ipynb, see rendered env view and growing eye-on-stick.log.
-Otherwise install and run Jupyter Lab, for example:
+At this point you can already run eye-on-stick.ipynb (for instance in Visual Studio Code).
+MLFlow will stash some metrics and tensorboard events under mlruns/.
 
-Local dev (optional)
+To view MLFlow GUI at http://localhost:5000/ run:
+```
+mlflow ui
+```
+
+To view Tensorboard at http://localhost:6006/ run:
+```
+tensorboard --logdir mlruns/
+```
+
+To make a decent local development environment, install and run Jupyter Lab locally:
 ```
 conda install -y -c conda-forge nodejs
 pip install -r requirements-dev.txt
-jupyter labextension install nbdime-jupyterlab jupyter-matplotlib
-
+# (unstable?) jupyter labextension install nbdime-jupyterlab jupyter-matplotlib
 jupyter lab
 ```
