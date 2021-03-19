@@ -8,6 +8,8 @@ from PIL import Image, ImageDraw
 
 import matplotlib.pyplot as plt
 
+from lib.fuzz import mk_monotonic_f
+
 ## ----------------------------------------------------
 
 # configure logging
@@ -94,18 +96,21 @@ class EyeOnStickEnv(gym.Env):
     ACC_ZERO = 1
     ACC_MINUS = 0
     
-    def __init__(self, N_JOINTS, N_SEGS):
+    def __init__(self, N_JOINTS, params):
         super(EyeOnStickEnv, self).__init__()
         self.stick_len = 1.0
         
         self.N_JOINTS = N_JOINTS
-        self.N_SEGS = N_SEGS
+        self.params = params
 
         self.action_space = spaces.Box(low=-1, high=1, shape=(self.N_JOINTS,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-1, high=1, shape=(3 + 2*self.N_JOINTS,), dtype=np.float32)
         
         self.nresets = 0
         self.nsteps = 0
+        
+        for i in range(self.N_JOINTS):
+            self.gearfunc = mk_monotonic_f()
         
         self.reset()
     
@@ -213,9 +218,9 @@ class EyeOnStickEnv(gym.Env):
         #alpha0 = self.alpha
         self._recalc()
         
-        reward_aim = 1 - np.tanh(np.abs(self.alpha))
-        reward_level = 1 - np.tanh(np.abs(self.eye_phi - EYE_PHI_GOAL)) # keep head aligned with x-axis
-        reward_action = 0 # - np.sum(np.square(actions))
+        reward_aim = 1 - self.params.get('REWARD_AIM_WEIGHT', 1) * np.tanh(np.abs(self.alpha))
+        reward_level = 1 - self.params.get('REWARD_LEVEL_WEIGHT', 1) * np.tanh(np.abs(self.eye_phi - EYE_PHI_GOAL)) # keep head aligned with x-axis
+        reward_action = - self.params.get('REWARD_ACTION_WEIGHT', 1) * np.sum(np.square(actions))
 
         done = False
         if (np.abs(self.alpha) < ALPHA_MAXDIFF_GOAL) and (np.abs(self.eye_phi - EYE_PHI_GOAL) < EYE_PHI_MAXDIFF_GOAL):
