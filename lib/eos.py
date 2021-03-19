@@ -105,19 +105,25 @@ class EyeOnStickEnv(gym.Env):
         
         self.reset()
     
-    def reset_pose(self):
-        # the stick is randomly oriented, but stationary
-        self.phi = np.zeros((self.N_JOINTS)) # np.random.uniform(low=-np.pi/2, high=np.pi/2)
-        self.dphi = np.zeros((self.N_JOINTS))
+    #def reset_pose(self):
+    #    # the stick is randomly oriented, but stationary
+    #    self.phi = np.zeros((self.N_JOINTS)) # np.random.uniform(low=-np.pi/2, high=np.pi/2)
+    #    self.dphi = np.zeros((self.N_JOINTS))
         
         self._recalc()
     
-    def set_random_target(self):
+    def set_random_target(self, recalc=True):
         self.target_x = np.random.uniform(low=X_LOW, high=X_HIGH)
         self.target_y = np.random.uniform(low=Y_LOW, high=Y_HIGH)
         self.target_vx = np.random.uniform(low=VX_LOW, high=VX_HIGH)
         self.target_vy = np.random.uniform(low=VY_LOW, high=VY_HIGH)
+        if recalc: self._recalc()
 
+    def set_random_pose(self, recalc=True):
+        self.phi = np.random.uniform(low=-PHI_AMP, high=PHI_AMP, size=(self.N_JOINTS))
+        self.dphi = np.random.uniform(low=-DPHI_AMP, high=DPHI_AMP, size=(self.N_JOINTS))        
+        if recalc: self._recalc()
+            
     def reset(self):
         self.nresets += 1
         self.nsteps = 0
@@ -129,19 +135,12 @@ class EyeOnStickEnv(gym.Env):
         self.actions_log = ""
         self.info = dict(info='')
 
-        self.set_random_target()
-        self.set_random_pose()
-        
+        self.set_random_target(recalc=False)
+        self.set_random_pose(recalc=False)
         self._recalc()
         
         return self.get_obs()
 
-    def set_random_pose(self):        
-        self.phi = np.random.uniform(low=-PHI_AMP, high=PHI_AMP, size=(self.N_JOINTS))
-        self.dphi = np.random.uniform(low=-DPHI_AMP, high=DPHI_AMP, size=(self.N_JOINTS))        
-        
-        self._recalc()
-    
     def _recalc(self):    
         angle = 0
         self.joints[0] = [BASE_X, BASE_Y]
@@ -210,8 +209,8 @@ class EyeOnStickEnv(gym.Env):
         self._recalc()
         
         reward_aim = 1 - np.tanh(np.abs(self.alpha))
-        reward_level = 1 # + np.tanh(np.abs(self.eye_phi - np.pi/2))
-        reward_action = 0 # - np.sum(np.square(actions))
+        reward_level = 1 - np.tanh(np.abs(self.eye_phi - np.pi/2)) # keep head aligned with x-axis
+        reward_action = - np.sum(np.square(actions))
 
         done = False
         if np.abs(self.alpha) < ALPHA_GOAL:
@@ -284,9 +283,9 @@ class EyeOnStickEnv(gym.Env):
         def r2d(r): return r / np.pi * 180
 
         
-        draw_text((10, LINE_HEIGHT), "round %5d, step %3d, aplha %7.2f°, last_actions %s"
-                  % (self.nresets, self.nsteps, r2d(self.alpha), self.last_actions))
         with np.printoptions(precision=4, sign='+'):
+            draw_text((10, LINE_HEIGHT), "round %5d, step %3d, aplha° %7.2f, eye_phi° %7.2f, last_actions %s"
+                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_phi), self.last_actions))
             draw_text((10, 2*LINE_HEIGHT), "phi° %s" % (r2d(self.phi)))
             draw_text((10, 3*LINE_HEIGHT), "dphi° %s" % (r2d(self.dphi)))
         draw_text((10, 4*LINE_HEIGHT), "info %s" % (str(self.info['info'])))
