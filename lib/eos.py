@@ -76,11 +76,15 @@ PHI_AMP = (np.pi/180) * 45 # angle: up to 45 degrees in total
 DPHI_AMP = (np.pi/180) * 5 # angular speed: up to 5 degrees per step
 
 # environment runs trying to catch the target in the very center of the eye view
-# if catches (alpha < ALPHA_GOAL), it gets reward of 10 and target jump away to another random location
-# if no catches in MAX_STEPS steps, the episode ends with reward of -10
+# if catches (alpha < ALPHA_GOAL) for N_GOALS steps, it gets a reward of 10 and make target jump to another random location
+# if no catches in MAX_STEPS steps, the episode ends with a reward of -10
 # otherwise reward is proportional to the eye view angle on the target
 
-ALPHA_GOAL = (np.pi/180) * 3
+ALPHA_MAXDIFF_GOAL = (np.pi/180) * 3
+EYE_PHI_GOAL = np.pi/2
+EYE_PHI_MAXDIFF_GOAL = ALPHA_MAXDIFF_GOAL
+
+N_GOALS = 25
 MAX_STEPS = 100
 
 class EyeOnStickEnv(gym.Env):    
@@ -132,6 +136,7 @@ class EyeOnStickEnv(gym.Env):
         self.joints = np.zeros((self.N_JOINTS + 1, 2))
         self.last_actions = []
 
+        self.ngoals = 0
         self.actions_log = ""
         self.info = dict(info='')
 
@@ -209,16 +214,22 @@ class EyeOnStickEnv(gym.Env):
         self._recalc()
         
         reward_aim = 1 - np.tanh(np.abs(self.alpha))
-        reward_level = 1 - np.tanh(np.abs(self.eye_phi - np.pi/2)) # keep head aligned with x-axis
-        reward_action = - np.sum(np.square(actions))
+        reward_level = 1 - np.tanh(np.abs(self.eye_phi - EYE_PHI_GOAL)) # keep head aligned with x-axis
+        reward_action = 0 # - np.sum(np.square(actions))
 
         done = False
-        if np.abs(self.alpha) < ALPHA_GOAL:
-            self.set_random_target()
-            reward_aim = 10
-        elif self.nsteps > MAX_STEPS:
-            done = True
-            reward_aim = -10
+        if (np.abs(self.alpha) < ALPHA_MAXDIFF_GOAL) and (np.abs(self.eye_phi - EYE_PHI_GOAL) < EYE_PHI_MAXDIFF_GOAL):
+            if self.ngoals > N_GOALS:
+                reward_aim = 10
+                self.set_random_target()
+                self.ngoals = 0
+            else:
+                self.ngoals += 1
+        else:
+            self.ngoals = 0
+            if self.nsteps > MAX_STEPS:
+                done = True
+                reward_aim = -10
 
         reward = reward_aim * reward_level + reward_action
         #if not done and reward < 0:
