@@ -108,18 +108,14 @@ class EyeOnStickEnv(gym.Env):
         
         self.nresets = 0
         self.nsteps = 0
-        
-        for i in range(self.N_JOINTS):
-            self.gearfunc = mk_monotonic_f()
-        
+                
         self.reset()
     
     #def reset_pose(self):
     #    # the stick is randomly oriented, but stationary
     #    self.phi = np.zeros((self.N_JOINTS)) # np.random.uniform(low=-np.pi/2, high=np.pi/2)
     #    self.dphi = np.zeros((self.N_JOINTS))
-        
-        self._recalc()
+    #    self._recalc()
     
     def set_random_target(self, recalc=True):
         self.target_x = np.random.uniform(low=X_LOW, high=X_HIGH)
@@ -139,12 +135,18 @@ class EyeOnStickEnv(gym.Env):
 
         # initialize to something
         self.joints = np.zeros((self.N_JOINTS + 1, 2))
-        self.last_actions = []
 
         self.ngoals = 0
         self.actions_log = ""
-        self.info = dict(info='')
+        self.info = dict(info="", last_actions=[], alpha=None, eye_phi=None)
 
+        self.gearfuncs = []
+        for i in range(self.N_JOINTS):
+            f = mk_monotonic_f(
+                noise=self.params.get('GEAR_FUNC_NOISE', 0),
+                low=-PHI_AMP, high=PHI_AMP)
+            self.gearfuncs.append(f)
+        
         self.set_random_target(recalc=False)
         self.set_random_pose(recalc=False)
         self._recalc()
@@ -156,7 +158,7 @@ class EyeOnStickEnv(gym.Env):
         self.joints[0] = [BASE_X, BASE_Y]
         
         for i in range(1, self.N_JOINTS + 1):
-            angle += self.phi[i - 1]
+            angle += self.gearfuncs[i - 1](self.phi[i - 1])
             self.joints[i, 0] = self.joints[i - 1, 0] + self.stick_len * np.sin(angle)
             self.joints[i, 1] = self.joints[i - 1, 1] + self.stick_len * np.cos(angle)
 
@@ -190,6 +192,7 @@ class EyeOnStickEnv(gym.Env):
         
         # eos moves
         for i in range(actions.shape[0]):
+            # construct action log
             if actions[i] > 0:
                 action_char = '+'
             elif actions[i] < 0:
@@ -198,24 +201,28 @@ class EyeOnStickEnv(gym.Env):
                 action_char = 'o'
             self.actions_log += action_char
             
+            # increase angular velocity according to acceleration action
             self.dphi[i] += actions[i] * DPHI_AMP / 10 # ***FIXME***
-
+            # keep angular velocity within [-DPHI_AMP, DPHI_AMP] interval
             self.dphi[self.dphi > DPHI_AMP] = DPHI_AMP
             self.dphi[self.dphi < -DPHI_AMP] = -DPHI_AMP
 
+            # increase angle according to the angular velocity
             self.phi += self.dphi
-            
+            # keep angle within [-PHI_AMP, PHI_AMP] interval
             phis_above_max = self.phi > PHI_AMP
             phis_below_min = self.phi < -PHI_AMP
             self.phi[phis_above_max] = PHI_AMP
             self.phi[phis_below_min] = -PHI_AMP
-            self.dphi[phis_above_max] = self.dphi[phis_below_min] = 0
+            # zero out angular velocity where limits were hit
+            self.dphi[phis_above_max] = 0
+            self.dphi[phis_below_min] = 0
 
+        # format action log: add space between individual moves and add new line after 27 moves
         self.actions_log += ' '
         if self.nsteps % 27 == 0:
             self.actions_log += '\n'
         
-        #alpha0 = self.alpha
         self._recalc()
         
         reward_aim = 1 - self.params.get('REWARD_AIM_WEIGHT', 1) * np.tanh(np.abs(self.alpha))
@@ -224,26 +231,30 @@ class EyeOnStickEnv(gym.Env):
 
         done = False
         if (np.abs(self.alpha) < ALPHA_MAXDIFF_GOAL) and (np.abs(self.eye_phi - EYE_PHI_GOAL) < EYE_PHI_MAXDIFF_GOAL):
+            # position is good if alpha is low and eye_phi is close to the goal level
             if self.ngoals > N_GOALS:
+                # caught enough goals, give reward and chase another target
                 reward_aim = 10
                 self.set_random_target()
                 self.ngoals = 0
             else:
                 self.ngoals += 1
         else:
+            # position is bad
             self.ngoals = 0
             if self.nsteps > MAX_STEPS:
+                # ... for a long time - give negative reward and end the episode
                 done = True
                 reward_aim = -10
 
+        # reward if both aim and level are good, add penalty for any actions (which are accelerations and deccelerations)
         reward = reward_aim * reward_level + reward_action
-        #if not done and reward < 0:
-        #    reward = 0
-        #elif reward > 10:
-        #    reward = 10
-            
-        self.last_actions = actions
-        self.info = dict(alpha=self.alpha, info=f"reward={reward:7.4f} (aim={reward_aim:7.4f}, level={reward_level:7.4f}, action={reward_action:7.4f})")
+
+        # stash data for metrics and monitoring
+        self.info = dict(
+            alpha=self.alpha, eye_phi=self.eye_phi,
+            last_actions=actions, 
+            info=f"reward={reward:7.4f} (aim={reward_aim:7.4f}, level={reward_level:7.4f}, action={reward_action:7.4f})")
         return self.get_obs(), reward, done, self.info
 
 
@@ -301,7 +312,7 @@ class EyeOnStickEnv(gym.Env):
         
         with np.printoptions(precision=4, sign='+'):
             draw_text((10, LINE_HEIGHT), "round %5d, step %3d, aplha° %7.2f, eye_phi° %7.2f, last_actions %s"
-                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_phi), self.last_actions))
+                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_phi), self.info['last_actions']))
             draw_text((10, 2*LINE_HEIGHT), "phi° %s" % (r2d(self.phi)))
             draw_text((10, 3*LINE_HEIGHT), "dphi° %s" % (r2d(self.dphi)))
         draw_text((10, 4*LINE_HEIGHT), "info %s" % (str(self.info['info'])))
@@ -331,7 +342,7 @@ class EyeOnStickEnv(gym.Env):
             draw_line(self.eye_x, self.eye_y, ex2, ey2, AXIS_COLOR, STICK_WIDTH)
             draw_line(ex1, ey1, ex2, ey2, AXIS_COLOR, STICK_WIDTH)            
         except ValueError as err:
-            print("#ValueError joints=%s, phi=%s, last_action=%s" % (self.joints, self.phi, self.last_actions))
+            print("#ValueError joints=%s, phi=%s, last_action=%s" % (self.joints, self.phi, self.info['last_actions']))
             raise err
                
         draw_circle(self.target_x, self.target_y, TARGET_CIRCLE_SIZE, TARGET_CIRCLE_COLOR)
