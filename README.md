@@ -11,7 +11,7 @@ MLFlow will stash some metrics and tensorboard events under mlruns/.
 
 To view MLFlow GUI at http://localhost:5000/ run:
 ```
-mlflow ui
+mlflow ui --backend-store-uri sqlite:///mlruns/db.sqlite
 ```
 
 To view Tensorboard at http://localhost:6006/ run:

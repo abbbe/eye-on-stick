@@ -49,10 +49,11 @@ BASE_Y = 0
 X_LOW, X_HIGH = 2, 3
 Y_LOW, Y_HIGH = 0, 3
 VX_LOW, VX_HIGH = 0, 0 # -0.01, 0.01
-VY_LOW, VY_HIGH = 0, 0 # -0.05, 0.05
+VY_LOW, VY_HIGH = -0.01, 0.01
 
-SCREEN_SIZE = 900
-SCREEN_SCALE = SCREEN_SIZE / 9
+SCREEN_SIZE = (900, 500)
+SCREEN_CENTER = (450, 450)
+SCREEN_SCALE = 100
 BG_COLOR = (0, 0, 0)
 BORDER_COLOR = (0, 128, 0)
 
@@ -75,19 +76,16 @@ STICK_LEN = 1.0
 STICK_WIDTH = 0.01
 
 PHI_AMP = (np.pi/180) * 45 # angle: up to 45 degrees in total
-DPHI_AMP = (np.pi/180) * 5 # angular speed: up to 5 degrees per step
+DPHI_AMP = (np.pi/180) * 0.5 # angular speed: up to 1 degrees per step
 
 # environment runs trying to catch the target in the very center of the eye view
 # if catches (alpha < ALPHA_GOAL) for N_GOALS steps, it gets a reward of 10 and make target jump to another random location
-# if no catches in MAX_STEPS steps, the episode ends with a reward of -10
 # otherwise reward is proportional to the eye view angle on the target
 
+N_GOALS = 5
 ALPHA_MAXDIFF_GOAL = (np.pi/180) * 3
 EYE_PHI_GOAL = np.pi/2
 EYE_PHI_MAXDIFF_GOAL = ALPHA_MAXDIFF_GOAL
-
-N_GOALS = 25
-MAX_STEPS = 100
 
 class EyeOnStickEnv(gym.Env):    
     metadata = {'render.modes': ['rgb_array']}
@@ -124,6 +122,11 @@ class EyeOnStickEnv(gym.Env):
         self.target_vy = np.random.uniform(low=VY_LOW, high=VY_HIGH)
         if recalc: self._recalc()
 
+    def set_zero_pose(self, recalc=True):
+        self.phi = np.zeros((self.N_JOINTS))
+        self.dphi = np.zeros((self.N_JOINTS))
+        if recalc: self._recalc()
+
     def set_random_pose(self, recalc=True):
         self.phi = np.random.uniform(low=-PHI_AMP, high=PHI_AMP, size=(self.N_JOINTS))
         self.dphi = np.random.uniform(low=-DPHI_AMP, high=DPHI_AMP, size=(self.N_JOINTS))        
@@ -148,7 +151,8 @@ class EyeOnStickEnv(gym.Env):
             self.gearfuncs.append(f)
         
         self.set_random_target(recalc=False)
-        self.set_random_pose(recalc=False)
+        #self.set_random_pose(recalc=False)
+        self.set_zero_pose(recalc=False)
         self._recalc()
         
         return self.get_obs()
@@ -158,7 +162,8 @@ class EyeOnStickEnv(gym.Env):
         self.joints[0] = [BASE_X, BASE_Y]
         
         for i in range(1, self.N_JOINTS + 1):
-            angle += self.gearfuncs[i - 1](self.phi[i - 1])
+            #angle += self.gearfuncs[i - 1](self.phi[i - 1])
+            angle += self.phi[i - 1]
             self.joints[i, 0] = self.joints[i - 1, 0] + self.stick_len * np.sin(angle)
             self.joints[i, 1] = self.joints[i - 1, 1] + self.stick_len * np.cos(angle)
 
@@ -225,30 +230,30 @@ class EyeOnStickEnv(gym.Env):
         
         self._recalc()
         
-        reward_aim = 1 - self.params.get('REWARD_AIM_WEIGHT', 1) * np.tanh(np.abs(self.alpha))
-        reward_level = 1 - self.params.get('REWARD_LEVEL_WEIGHT', 1) * np.tanh(np.abs(self.eye_phi - EYE_PHI_GOAL)) # keep head aligned with x-axis
-        reward_action = - self.params.get('REWARD_ACTION_WEIGHT', 1) * np.sum(np.square(actions))
+        #reward_aim = np.square((np.pi - np.abs(self.alpha)) / np.pi) * self.params.get('REWARD_AIM_WEIGHT', 1)
+        reward_aim = 0 # - np.log(np.abs(self.alpha)) # * self.params.get('REWARD_AIM_WEIGHT', 1)
+        reward_level = 0 # - np.tanh(np.abs(self.eye_phi - EYE_PHI_GOAL)) # keep head aligned with x-axis #  self.params.get('REWARD_LEVEL_WEIGHT', 1) * 
+        reward_action = 0 # - np.sum(np.square(self.dphi)) # self.params.get('REWARD_ACTION_WEIGHT', 1) * 
 
         done = False
-        if (np.abs(self.alpha) < ALPHA_MAXDIFF_GOAL) and (np.abs(self.eye_phi - EYE_PHI_GOAL) < EYE_PHI_MAXDIFF_GOAL):
-            # position is good if alpha is low and eye_phi is close to the goal level
+        #if (np.abs(self.alpha) < ALPHA_MAXDIFF_GOAL) and (np.abs(self.eye_phi - EYE_PHI_GOAL) < EYE_PHI_MAXDIFF_GOAL):
+        if np.abs(self.alpha) < ALPHA_MAXDIFF_GOAL:
+            # position is good
             if self.ngoals > N_GOALS:
                 # caught enough goals, give reward and chase another target
+                done = True
                 reward_aim = 10
-                self.set_random_target()
                 self.ngoals = 0
             else:
+                reward_aim = 1
                 self.ngoals += 1
         else:
             # position is bad
             self.ngoals = 0
-            if self.nsteps > MAX_STEPS:
-                # ... for a long time - give negative reward and end the episode
-                done = True
-                reward_aim = -10
+            reward_aim = 0
 
         # reward if both aim and level are good, add penalty for any actions (which are accelerations and deccelerations)
-        reward = reward_aim * reward_level + reward_action
+        reward = reward_aim # * reward_level + reward_action
 
         # stash data for metrics and monitoring
         self.info = dict(
@@ -262,13 +267,13 @@ class EyeOnStickEnv(gym.Env):
         if mode != 'rgb_array':
             raise NotImplementedError()
 
-        image = Image.new('RGB', (SCREEN_SIZE, SCREEN_SIZE), BG_COLOR)
+        image = Image.new('RGB', SCREEN_SIZE, BG_COLOR)
         draw = ImageDraw.Draw(image)
-        draw.polygon([(0, 0), (0, SCREEN_SIZE-1), (SCREEN_SIZE-1, SCREEN_SIZE-1), (SCREEN_SIZE-1, 0), (0, 0)], outline=BORDER_COLOR) # FIXME
+        draw.polygon([(0, 0), (0, SCREEN_SIZE[1]-1), (SCREEN_SIZE[0]-1, SCREEN_SIZE[1]-1), (SCREEN_SIZE[0]-1, 0), (0, 0)], outline=BORDER_COLOR) # FIXME
 
         def xy2pxy(x, y):
-            px = int(SCREEN_SIZE / 2 + x * SCREEN_SCALE)
-            py = int(SCREEN_SIZE / 2 - y * SCREEN_SCALE)
+            px = int(SCREEN_CENTER[0] + x * SCREEN_SCALE)
+            py = int(SCREEN_CENTER[1] - y * SCREEN_SCALE)
             return px, py
         
         def draw_rect(x1, y1, x2, y2, c):
