@@ -46,10 +46,10 @@ tf.get_logger().setLevel(logging.ERROR)
 BASE_X = -2
 BASE_Y = 0
 
-X_LOW, X_HIGH = 2, 3
-Y_LOW, Y_HIGH = 0, 3
+X_LOW, X_HIGH = 3, 3
+#Y_LOW, Y_HIGH = 0.7, 1.7
 VX_LOW, VX_HIGH = 0, 0 # -0.01, 0.01
-VY_LOW, VY_HIGH = -0.01, 0.01
+VY_LOW, VY_HIGH = 0, 0 # -0.05, 0.05
 
 SCREEN_SIZE = (224*3, 224)
 SCREEN_CENTER = (112, 220)
@@ -83,9 +83,7 @@ DPHI_AMP = (np.pi/180) * 0.5 # angular speed: up to 1 degrees per step
 # otherwise reward is proportional to the eye view angle on the target
 
 N_GOALS = 5
-ALPHA_MAXDIFF_GOAL = (np.pi/180) * 3
 EYE_PHI_GOAL = np.pi/2
-EYE_PHI_MAXDIFF_GOAL = ALPHA_MAXDIFF_GOAL
 
 class EyeOnStickEnv(gym.Env):    
     metadata = {'render.modes': ['rgb_array']}
@@ -100,9 +98,11 @@ class EyeOnStickEnv(gym.Env):
         
         self.N_JOINTS = N_JOINTS
         self.params = params
+        
+        self.Y_LOW, self.Y_HIGH = 0.7, (self.N_JOINTS-2) + .7
 
         self.action_space = spaces.Box(low=-1, high=1, shape=(self.N_JOINTS,), dtype=np.float32)
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(3 + 2*self.N_JOINTS,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-1, high=1, shape=(2 + 2*self.N_JOINTS,), dtype=np.float32)
         
         self.nresets = 0
         self.nsteps = 0
@@ -117,7 +117,7 @@ class EyeOnStickEnv(gym.Env):
     
     def set_random_target(self, recalc=True):
         self.target_x = np.random.uniform(low=X_LOW, high=X_HIGH)
-        self.target_y = np.random.uniform(low=Y_LOW, high=Y_HIGH)
+        self.target_y = np.random.uniform(low=self.Y_LOW, high=self.Y_HIGH)
         self.target_vx = np.random.uniform(low=VX_LOW, high=VX_HIGH)
         self.target_vy = np.random.uniform(low=VY_LOW, high=VY_HIGH)
         if recalc: self._recalc()
@@ -153,6 +153,9 @@ class EyeOnStickEnv(gym.Env):
         self.set_random_target(recalc=False)
         #self.set_random_pose(recalc=False)
         self.set_zero_pose(recalc=False)
+        
+        self.alpha = 0
+        
         self._recalc()
         
         return self.get_obs()
@@ -173,11 +176,15 @@ class EyeOnStickEnv(gym.Env):
         
         dx = self.target_x - self.eye_x
         dy = self.target_y - self.eye_y
+        
+        prev_alpha = self.alpha
         self.alpha = np.arctan2(dx, dy) - self.eye_phi
+        self.dalpha = self.alpha - prev_alpha
               
     def get_obs(self):
         # prepare normalized observations
-        alpha = np.array([np.sin(self.alpha), np.cos(self.alpha), self.alpha / PHI_AMP])
+        #alpha = np.array([np.sin(self.alpha), np.cos(self.alpha), self.alpha / PHI_AMP, self.dalpha / DPHI_AMP])
+        alpha = np.array([self.alpha / PHI_AMP, self.dalpha / DPHI_AMP])
         dphis = self.dphi / DPHI_AMP
         phis = self.phi / PHI_AMP
         return np.hstack((alpha, dphis, phis)).astype(np.float32)
@@ -194,6 +201,12 @@ class EyeOnStickEnv(gym.Env):
         
         # episode over if target goes out of range
         #done = bool(self.target_x < X_LOW or self.target_x > X_HIGH or self.target_y < Y_LOW or self.target_y > Y_HIGH)
+        if self.target_y < self.Y_LOW:
+            self.target_y = self.Y_LOW
+            self.target_vy = np.abs(self.target_vy)
+        elif self.target_y > self.Y_HIGH:
+            self.target_y = self.Y_HIGH
+            self.target_vy = - np.abs(self.target_vy)
         
         # eos moves
         for i in range(actions.shape[0]):
@@ -230,38 +243,40 @@ class EyeOnStickEnv(gym.Env):
         
         self._recalc()
         
-        #reward_aim = np.square((np.pi - np.abs(self.alpha)) / np.pi) * self.params.get('REWARD_AIM_WEIGHT', 1)
-        reward_aim = 0 # - np.log(np.abs(self.alpha)) # * self.params.get('REWARD_AIM_WEIGHT', 1)
-        reward_level = 0 # - np.tanh(np.abs(self.eye_phi - EYE_PHI_GOAL)) # keep head aligned with x-axis #  self.params.get('REWARD_LEVEL_WEIGHT', 1) * 
+        reward_aim = bool(np.abs(self.alpha) < (np.pi/180) * self.params.get('ALPHA_MAXDIFF_GOAL'))
+        if self.params.get('EYE_PHI_MAXDIFF_GOAL', None):
+            # reward only if eye phi is close enough to the goal value
+            reward_level = bool(np.abs(self.eye_phi - EYE_PHI_GOAL) < (np.pi/180) * self.params.get('EYE_PHI_MAXDIFF_GOAL'))
+        else:
+            # tolerate any eye phi
+            reward_level = True
         reward_action = 0 # - np.sum(np.square(self.dphi)) # self.params.get('REWARD_ACTION_WEIGHT', 1) * 
 
-        done = False
-        #if (np.abs(self.alpha) < ALPHA_MAXDIFF_GOAL) and (np.abs(self.eye_phi - EYE_PHI_GOAL) < EYE_PHI_MAXDIFF_GOAL):
-        if np.abs(self.alpha) < ALPHA_MAXDIFF_GOAL:
+        done = self.nsteps > self.params.get('MAX_NSTEPS')
+        if reward_level and reward_aim:
             # position is good
-            if self.ngoals > N_GOALS:
-                # caught enough goals, give reward and chase another target
-                done = True
-                reward_aim = 10
-                self.ngoals = 0
-            else:
-                reward_aim = 1
-                self.ngoals += 1
+            #if self.ngoals > N_GOALS:
+            #    # caught enough goals, give reward and chase another target
+            #    #done = True
+            #    reward = 2
+            #    #self.ngoals = 0
+            #else:
+            reward = 1
+            #self.ngoals += 1
         else:
             # position is bad
-            self.ngoals = 0
-            reward_aim = 0
-
-        # reward if both aim and level are good, add penalty for any actions (which are accelerations and deccelerations)
-        reward = reward_aim # * reward_level + reward_action
+            #self.ngoals = 0
+            reward = 0
 
         # stash data for metrics and monitoring
         self.info = dict(
             alpha=self.alpha, eye_phi=self.eye_phi,
             last_actions=actions, 
-            info=f"reward={reward:7.4f} (aim={reward_aim:7.4f}, level={reward_level:7.4f}, action={reward_action:7.4f})")
+            info=f"done={done}, reward={reward:7.4f} (aim={reward_aim}, level={reward_level}, action={reward_action})")
         return self.get_obs(), reward, done, self.info
 
+    def set_render_info(self, info):
+        self.render_info = info
 
     def render(self, mode='rgb_array'):
         if mode != 'rgb_array':
@@ -303,7 +318,7 @@ class EyeOnStickEnv(gym.Env):
             draw.text(pos, txt, fill=c)
             
         # draw rectangular area where target can appear
-        draw_rect(X_LOW, Y_LOW, X_HIGH, Y_HIGH, c=TARGET_BOX_COLOR)
+        draw_rect(X_LOW, self.Y_LOW, X_HIGH, self.Y_HIGH, c=TARGET_BOX_COLOR)
         
         # draw annotated x and y axes
         draw_text(xy2pxy(0, 0), "0", c=AXIS_COLOR)
@@ -321,7 +336,8 @@ class EyeOnStickEnv(gym.Env):
             draw_text((10, 2*LINE_HEIGHT), "phi° %s" % (r2d(self.phi)))
             draw_text((10, 3*LINE_HEIGHT), "dphi° %s" % (r2d(self.dphi)))
         draw_text((10, 4*LINE_HEIGHT), "info %s" % (str(self.info['info'])))
-        draw_text((10, 5*LINE_HEIGHT), self.actions_log)
+        draw_text((10, 5*LINE_HEIGHT), "render_info %s" % (str(self.render_info)))
+        draw_text((10, 6*LINE_HEIGHT), self.actions_log)
 
         x1 = self.joints[0, 0]
         y1 = self.joints[0, 1]
