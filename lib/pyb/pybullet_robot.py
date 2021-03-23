@@ -20,15 +20,17 @@ CAMERA_SPECS = (224, 224, 45) # https://www.chiefdelphi.com/t/horizontal-fov-of-
 
 class Manipulator:    
     STYLES = [
-        {'name': 'wire',     'plate_radius': 0.008, 'plate_length': 2*0.028, 'plate0_color': 'Black', 'plate_color': 'Black', 'block_color': 'Transparent', 'camera_color': 'Transparent'},
-        {'name': 'original', 'plate_radius': 0.035, 'plate_length': 0.025,   'plate0_color': 'Black', 'plate_color': 'Black', 'block_color': 'Orange',      'camera_color': 'Black' },
-        {'name': 'fat',      'plate_radius': 0.05 , 'plate_length': 2*0.028, 'plate0_color': 'Black', 'plate_color': 'Black', 'block_color': 'Transparent', 'camera_color': 'Transparent'}
+#        {'name': 'wire0',     'plate_radius': 0.0025, 'plate_length': 0.04, 'plate0_color': 'Red', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Transparent'},
+        {'name': 'wire',     'plate_radius': 0.01, 'plate_length': 0.056, 'plate0_color': 'Black', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Transparent'},
+        {'name': 'original', 'plate_radius': 0.1, 'plate_length': 0.01,   'plate0_color': 'Black', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Black' },
+        {'name': 'fat',      'plate_radius': 0.05 , 'plate_length': 2*0.028, 'plate0_color': 'Black', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Transparent'}
     ]
     
-    def __init__(self, w, NS, NP, style):
+    def __init__(self, w, NS, NP, NA, style):
         self.w = w
         self.NS = NS
         self.NP = NP
+        self.NA = NP
         self.style = style
         
         urdf_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
@@ -43,17 +45,21 @@ class Manipulator:
 
     def _setJointMotorPosition(self, joint, pos):
         p.resetJointState(self.body_id, joint, pos)
+        #print(joint, pos)
 
-    def _setJointPosition(self, sec, pos0, pos1):
-        j = (sec * self.NP) * 3
+    def _setJointPosition(self, section, pos0, pos1):
+        j = (section * self.NP) * 3
         
-        pos0 /= self.NS
-        pos1 /= self.NS
+        pos0 /= self.NA # spread along several axes
+        pos1 /= self.NA
         
-        for _ in range(self.NS):
+        assert self.NP % self.NA == 0
+        k = int(self.NP / self.NA)
+        
+        for _ in range(self.NA):
             self._setJointMotorPosition(j, pos0)
             self._setJointMotorPosition(j + 1, pos1)
-            j += 2
+            j += 2 * k
 
     def step(self, phis):
         for i in range(self.NS):

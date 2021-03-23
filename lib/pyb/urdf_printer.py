@@ -65,9 +65,9 @@ class URDFPrinter():
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="%(block_size)s"/>
+        <box size="%(block1_size)s"/>
       </geometry>
-      <material name="%(block_color)s"/>
+      <material name="%(block1_color)s"/>
     </visual>
   </link>
 
@@ -88,9 +88,9 @@ class URDFPrinter():
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="%(block_size)s"/>
+        <box size="%(block2_size)s"/>
       </geometry>
-      <material name="%(block_color)s"/>
+      <material name="%(block2_color)s"/>
     </visual>
   </link>
 
@@ -205,8 +205,10 @@ class URDFPrinter():
 
       print(self.section_template % {
         'parent': parent, 'index': i,
-        'block_size': '0.023 0.023 0.005',
-        'block_color': style['block_color'],
+        'block1_size': '0.02 0.025 0.005', # '0.023 0.023 0.005',
+        'block1_color': style['block1_color'],
+        'block2_size': '0.025 0.020 0.005', # '0.023 0.023 0.005',
+        'block2_color': style['block2_color'],
         'plate_color': plate_color,
         'plate_radius': style['plate_radius'],
         'plate_length': style['plate_length'],
