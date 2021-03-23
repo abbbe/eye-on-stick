@@ -101,8 +101,9 @@ class EyeOnStickEnv(gym.Env):
         
         self.Y_LOW, self.Y_HIGH = 0.7, (self.N_JOINTS-2) + .7
 
+        nobs = 2 * (3 + 2 * self.N_JOINTS)
         self.action_space = spaces.Box(low=-1, high=1, shape=(self.N_JOINTS,), dtype=np.float32)
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(2 + 2*self.N_JOINTS,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-1, high=1, shape=(nobs,), dtype=np.float32)
         
         self.nresets = 0
         self.nsteps = 0
@@ -116,10 +117,20 @@ class EyeOnStickEnv(gym.Env):
     #    self._recalc()
     
     def set_random_target(self, recalc=True):
+        if np.random.choice([True, False]):
+            if np.random.choice([True, False]):
+                y = self.Y_LOW
+            else:
+                y = self.Y_HIGH
+        else:
+                y = np.random.uniform(low=self.Y_LOW, high=self.Y_HIGH)
+
         self.target_x = np.random.uniform(low=X_LOW, high=X_HIGH)
-        self.target_y = np.random.uniform(low=self.Y_LOW, high=self.Y_HIGH)
+        self.target_y = y # np.random.uniform(low=self.Y_LOW, high=self.Y_HIGH)
         self.target_vx = np.random.uniform(low=VX_LOW, high=VX_HIGH)
         self.target_vy = np.random.uniform(low=VY_LOW, high=VY_HIGH)
+        
+            
         if recalc: self._recalc()
 
     def set_zero_pose(self, recalc=True):
@@ -184,10 +195,20 @@ class EyeOnStickEnv(gym.Env):
     def get_obs(self):
         # prepare normalized observations
         #alpha = np.array([np.sin(self.alpha), np.cos(self.alpha), self.alpha / PHI_AMP, self.dalpha / DPHI_AMP])
-        alpha = np.array([self.alpha / PHI_AMP, self.dalpha / DPHI_AMP])
-        dphis = self.dphi / DPHI_AMP
-        phis = self.phi / PHI_AMP
-        return np.hstack((alpha, dphis, phis)).astype(np.float32)
+        #alpha = np.array([self.alpha / PHI_AMP, self.dalpha / DPHI_AMP])
+        #dphis = self.dphi / DPHI_AMP
+        #phis = self.phi / PHI_AMP
+        #return np.hstack((alpha, dphis, phis)).astype(np.float32)
+        
+        obs_angles = [self.alpha, self.dalpha, (self.eye_phi - np.pi/2)]
+        obs_angles.extend(self.phi)
+        obs_angles.extend(self.dphi)
+        
+        obs_sincos = []
+        for x in obs_angles:
+            obs_sincos.extend([np.cos(x), np.sin(x)])
+            
+        return np.array(obs_sincos).astype(np.float32)
     
     def step(self, actions):
         actions = np.array(actions)

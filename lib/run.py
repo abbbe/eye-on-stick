@@ -1,5 +1,4 @@
 import numpy as np
-import time
 
 from lib.viz import showarray
 from IPython import display
@@ -27,7 +26,7 @@ def default_displayfunc(img_array):
 
     showarray(img_array)
 
-def run_env_nsteps(env, model, nsteps, displayfunc=False, wait=None):
+def run_env_nsteps(env, model, nsteps, displayfunc=False):
     all_alphas, all_eye_phis, all_rewards = [], [], []
 
     def get_metrics():
@@ -60,9 +59,6 @@ def run_env_nsteps(env, model, nsteps, displayfunc=False, wait=None):
         all_alphas.append([info['alpha'] for info in infos])                
         all_eye_phis.append([info['eye_phi'] for info in infos])                
         all_rewards.append(rewards)
-
-        if wait:
-            time.sleep(wait)
             
     metrics = get_metrics()
 
