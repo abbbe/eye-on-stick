@@ -292,7 +292,7 @@ class EyeOnStickEnv(gym.Env):
             reward = 0
 
         # stash data for metrics and monitoring
-        traj = np.vstack((self.phi, self._phi)) # (2, NJ)
+        traj = np.vstack((self.phi, self._phi, self.dphi)) # (3, NJ)
         self.info = dict(
             alpha=self.alpha, eye_phi=self.eye_phi,
             last_actions=actions, 
