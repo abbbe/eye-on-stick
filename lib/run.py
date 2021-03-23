@@ -1,10 +1,33 @@
 import numpy as np
 import time
+
 from lib.viz import showarray
+from IPython import display
 
 from scipy.stats import t as stats_t
 
-def run_env_nsteps(env, model, nsteps, display, wait=None):
+def draw_text(txt, vpos=0):
+    vpos += 1
+    dashboard_draw.text((10, 10*vpos), txt)
+    return vpos
+
+def default_displayfunc(img_array):
+    display.clear_output(wait=True)
+
+    if False:
+        dashboard_img = Image.new('RGB', (img_array.shape[1], img_array.shape[0]))
+        dashboard_draw = ImageDraw.Draw(dashboard_img)
+
+        vpos = 0
+        for key, val in metrics.items():
+            vpos = draw_text(f'{key:15s} {val:+.4f}', vpos=vpos)
+
+        dashboard_img_array = np.asarray(dashboard_img)
+        img_array = np.vstack((img_array, dashboard_img_array))
+
+    showarray(img_array)
+
+def run_env_nsteps(env, model, nsteps, displayfunc=False, wait=None):
     all_alphas, all_eye_phis, all_rewards = [], [], []
 
     def get_metrics():
@@ -22,9 +45,14 @@ def run_env_nsteps(env, model, nsteps, display, wait=None):
 
     obs = env.reset()
     for _ in range(nsteps):
-        if display:
-            display.clear_output(wait=True)
-            showarray(env.render(mode='rgb_array'))
+        # if displayfunc is set, render the environment
+        if type(displayfunc) == bool:
+            if displayfunc == True:
+                displayfunc = default_displayfunc
+            else:
+                displayfunc = None
+        if displayfunc is not None:
+            displayfunc(env.render(mode='rgb_array'))
 
         actions, _ = model.predict(obs, deterministic=True)
         obs, rewards, dones, infos = env.step(actions)
