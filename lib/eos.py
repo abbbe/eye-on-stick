@@ -101,7 +101,7 @@ class EyeOnStickEnv(gym.Env):
         
         self.Y_LOW, self.Y_HIGH = 0.7, (self.N_JOINTS-2) + .7
 
-        nobs = 2 * (3 + 2 * self.N_JOINTS)
+        nobs = 2 * (2 + 2 * self.N_JOINTS)
         self.action_space = spaces.Box(low=-1, high=1, shape=(self.N_JOINTS,), dtype=np.float32)
         self.observation_space = spaces.Box(low=-1, high=1, shape=(nobs,), dtype=np.float32)
         
@@ -202,7 +202,7 @@ class EyeOnStickEnv(gym.Env):
         #phis = self.phi / PHI_AMP
         #return np.hstack((alpha, dphis, phis)).astype(np.float32)
         
-        obs_angles = [self.alpha, self.dalpha, (self.eye_phi - np.pi/2)]
+        obs_angles = [self.alpha, self.dalpha] # , (self.eye_phi - np.pi/2)]
         obs_angles.extend(self.phi)
         obs_angles.extend(self.dphi)
         
