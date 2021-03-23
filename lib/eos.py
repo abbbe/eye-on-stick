@@ -136,6 +136,7 @@ class EyeOnStickEnv(gym.Env):
     def set_zero_pose(self, recalc=True):
         self.phi = np.zeros((self.N_JOINTS))
         self.dphi = np.zeros((self.N_JOINTS))
+        self._phi = np.zeros((self.N_JOINTS))
         if recalc: self._recalc()
 
     def set_random_pose(self, recalc=True):
@@ -156,8 +157,9 @@ class EyeOnStickEnv(gym.Env):
 
         self.gearfuncs = []
         for i in range(self.N_JOINTS):
+            noise = self.params.get('GEAR_FUNC_NOISE', 0)
             f = mk_monotonic_f(
-                noise=self.params.get('GEAR_FUNC_NOISE', 0),
+                noise=noise,
                 low=-PHI_AMP, high=PHI_AMP)
             self.gearfuncs.append(f)
         
@@ -176,8 +178,8 @@ class EyeOnStickEnv(gym.Env):
         self.joints[0] = [BASE_X, BASE_Y]
         
         for i in range(1, self.N_JOINTS + 1):
-            #angle += self.gearfuncs[i - 1](self.phi[i - 1])
-            angle += self.phi[i - 1]
+            self._phi[i-1] = self.gearfuncs[i - 1](self.phi[i - 1])
+            angle += self._phi[i - 1]
             self.joints[i, 0] = self.joints[i - 1, 0] + self.stick_len * np.sin(angle)
             self.joints[i, 1] = self.joints[i - 1, 1] + self.stick_len * np.cos(angle)
 
@@ -290,10 +292,12 @@ class EyeOnStickEnv(gym.Env):
             reward = 0
 
         # stash data for metrics and monitoring
+        traj = np.vstack((self.phi, self._phi)) # (2, NJ)
         self.info = dict(
             alpha=self.alpha, eye_phi=self.eye_phi,
             last_actions=actions, 
-            info=f"done={done}, reward={reward:7.4f} (aim={reward_aim}, level={reward_level}, action={reward_action})")
+            info=f"done={done}, reward={reward:7.4f} (aim={reward_aim}, level={reward_level}, action={reward_action})",
+            traj=traj)
         return self.get_obs(), reward, done, self.info
 
     def set_render_info(self, info):

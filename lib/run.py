@@ -26,7 +26,7 @@ def default_displayfunc(img_array):
 
     showarray(img_array)
 
-def run_env_nsteps(env, model, nsteps, displayfunc=False):
+def run_env_nsteps(env, model, nsteps, displayfunc=False, trajfunc=None):
     all_alphas, all_eye_phis, all_rewards = [], [], []
 
     def get_metrics():
@@ -56,9 +56,13 @@ def run_env_nsteps(env, model, nsteps, displayfunc=False):
         actions, _ = model.predict(obs, deterministic=True)
         obs, rewards, dones, infos = env.step(actions)
 
-        all_alphas.append([info['alpha'] for info in infos])                
-        all_eye_phis.append([info['eye_phi'] for info in infos])                
+        for info in infos:
+            all_alphas.append(info['alpha'])
+            all_eye_phis.append(info['eye_phi'])
+            if trajfunc is not None:
+                trajfunc(info['traj'])
         all_rewards.append(rewards)
+        
             
     metrics = get_metrics()
 
