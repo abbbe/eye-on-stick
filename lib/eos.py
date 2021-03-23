@@ -142,6 +142,7 @@ class EyeOnStickEnv(gym.Env):
     def set_random_pose(self, recalc=True):
         self.phi = np.random.uniform(low=-PHI_AMP, high=PHI_AMP, size=(self.N_JOINTS))
         self.dphi = np.random.uniform(low=-DPHI_AMP, high=DPHI_AMP, size=(self.N_JOINTS))        
+        self._phi = np.zeros((self.N_JOINTS))
         if recalc: self._recalc()
             
     def reset(self):
@@ -163,8 +164,8 @@ class EyeOnStickEnv(gym.Env):
             self.gearfuncs.append(f)
         
         self.set_random_target(recalc=False)
-        #self.set_random_pose(recalc=False)
-        self.set_zero_pose(recalc=False)
+        self.set_random_pose(recalc=False)
+        #self.set_zero_pose(recalc=False)
         
         self.alpha = 0
         
