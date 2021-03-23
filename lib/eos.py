@@ -155,21 +155,12 @@ class EyeOnStickEnv(gym.Env):
         self.actions_log = ""
         self.info = dict(info="", last_actions=[], alpha=None, eye_phi=None)
 
-        def sigma(x, k):
-            return 1/(1 + np.exp(-x*k))
-
-        def sigma2(low, high, x, k):            
-            min = sigma(low, k)
-            max = sigma(high, k)
-            z = (sigma(x, k) - min) / (max - min) # [0, 1]
-            z = z * (high - low) + low
-            return z
-            
         self.gearfuncs = []
         for i in range(self.N_JOINTS):
-            #noise = self.params.get('GEAR_FUNC_NOISE', 0)
-            #f = mk_monotonic_f(noise=noise, low=-PHI_AMP, high=PHI_AMP)
-            self.gearfuncs.append(lambda x: sigma2(-PHI_AMP, PHI_AMP, x, 25))
+            noise = self.params.get('GEAR_FUNC_NOISE', 0)
+            f = mk_monotonic_f(noise=noise, low=-PHI_AMP, high=PHI_AMP)
+            #self.gearfuncs.append(lambda x: sigma2(-PHI_AMP, PHI_AMP, x, 25))
+            self.gearfuncs.append(f)
         
         self.set_random_target(recalc=False)
         #self.set_random_pose(recalc=False)

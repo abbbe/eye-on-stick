@@ -2,6 +2,29 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.datasets import make_regression
 
+#---
+
+def sigma(x, k):
+    return 1/(1 + np.exp(-x*k))
+
+def sigma2(low, high, x, k):            
+    min = sigma(low, k)
+    max = sigma(high, k)
+    z = (sigma(x, k) - min) / (max - min) # [0, 1]
+    z = z * (high - low) + low
+
+    k = 0.75
+    if np.isscalar(x):
+        if x < low*k or x > high*k:
+            z = 0
+    else:
+        z[x < low*k] = 0
+        z[x > high*k] = 0
+
+    return z
+
+#---
+
 def mk_poly_f(noise, low, high, N=10, D=5):
     # returns D-order polinomial function mapping [-1, 1] interval to itself
     x, y = make_regression(n_samples=N, n_features=1, noise=noise, effective_rank=D, shuffle=False)
