@@ -5,17 +5,17 @@ from IPython import display
 
 from scipy.stats import t as stats_t
 
-def draw_text(txt, vpos=0):
-    vpos += 1
-    dashboard_draw.text((10, 10*vpos), txt)
-    return vpos
-
 def default_displayfunc(img_array):
     display.clear_output(wait=True)
 
     if False:
         dashboard_img = Image.new('RGB', (img_array.shape[1], img_array.shape[0]))
         dashboard_draw = ImageDraw.Draw(dashboard_img)
+
+    def draw_text(txt, vpos=0):
+        vpos += 1
+        dashboard_draw.text((10, 10*vpos), txt)
+        return vpos
 
         vpos = 0
         for key, val in metrics.items():
@@ -60,6 +60,7 @@ def run_env_nsteps(env, model, nsteps, displayfunc=False, trajfunc=None):
             all_alphas.append(info['alpha'])
             all_eye_phis.append(info['eye_phi'])
             if trajfunc is not None:
+                # if trajectory callback is set, call it XXX multiple times per vector env FIXME
                 trajfunc(info['traj'])
         all_rewards.append(rewards)
         
