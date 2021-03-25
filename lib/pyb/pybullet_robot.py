@@ -26,11 +26,10 @@ class Manipulator:
         {'name': 'fat',      'plate_radius': 0.05 , 'plate_length': 2*0.028, 'plate0_color': 'Black', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Transparent'}
     ]
     
-    def __init__(self, w, NS, NP, NA, style):
+    def __init__(self, w, NS, NP, style):
         self.w = w
         self.NS = NS
         self.NP = NP
-        self.NA = NA
         self.style = style
         
         urdf_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
@@ -50,16 +49,12 @@ class Manipulator:
     def _setJointPosition(self, section, pos0, pos1):
         j = (section * self.NP) * 3
         
-        pos0 /= self.NA # spread along several axes
-        pos1 /= self.NA
-        
-        assert self.NP % self.NA == 0
-        k = int(self.NP / self.NA)
-        
-        for _ in range(self.NA):
-            self._setJointMotorPosition(j, pos0)
-            self._setJointMotorPosition(j + 1, pos1)
-            j += 2 * k
+        pos0 /= self.NP # spread along several axes
+        pos1 /= self.NP
+                
+        for i in range(self.NP):
+            self._setJointMotorPosition(j + 3*i, pos0)
+            self._setJointMotorPosition(j + 3*i + 1, pos1)
 
     def step(self, phis):
         for i in range(self.NS):
@@ -179,7 +174,7 @@ class World(object):
                 #p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW, 0)
                 #p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW, 1)
 
-                #p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=-90, cameraPitch=-10, cameraTargetPosition=[0, 0, 1])
+                p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=-90, cameraPitch=-10, cameraTargetPosition=[0, 0, 1])
             else:
                 p.connect(p.DIRECT) # don't render
 

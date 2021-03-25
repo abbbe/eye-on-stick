@@ -45,7 +45,7 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         #self.side_cam = FixedCamera(self.w, np.array(((5,0,0.5), (-1,0,0), (0,0,1))))
         self.side_cam = FixedCamera(self.w, np.array(((1.5, -4, 1.5), (0, 1, 0), (0, 0, 1))))
         self.back_cam = FixedCamera(self.w, np.array(((-3, -0.1, 1.5), (1, 0, 0), (0, 0, 1))))
-        self.m = Manipulator(self.w, self.NS, 1, 1, style=Manipulator.STYLES[0])
+        self.m = Manipulator(self.w, self.NS, 4, style=Manipulator.STYLES[0])
         self.eye_cam = LinkedCamera(self.w, self.m.body_id, self.m.eye_link_id)
 
         super(EyeOnStickEnv3D, self).__init__(N_JOINTS, params)
