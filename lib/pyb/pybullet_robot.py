@@ -161,6 +161,8 @@ class World(object):
                 #p.configureDebugVisualizer(p.COV_ENABLE_SEGMENTATION_MARK_PREVIEW, 0)
                 #p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW, 0)
                 #p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW, 1)
+
+                p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=-60, cameraPitch=-10, cameraTargetPosition=[0, 0, 1])
             else:
                 p.connect(p.DIRECT) # don't render
 

@@ -7,11 +7,11 @@ from lib.eos import EyeOnStickEnv
 from lib.pyb.pybullet_robot import World, Manipulator, FixedCamera, LinkedCamera
 
 # https://stackoverflow.com/questions/2827393/angles-between-two-n-dimensional-vectors-in-python
-def unit_vector(vector):
-    """ Returns the unit vector of the vector.  """
-    return vector / np.linalg.norm(vector)
-
 def angle_between(v1, v2):
+    def unit_vector(vector):
+        """ Returns the unit vector of the vector.  """
+        return vector / np.linalg.norm(vector)
+
     """ Returns the angle in radians between vectors 'v1' and 'v2'::
 
             >>> angle_between((1, 0, 0), (0, 1, 0))
@@ -26,15 +26,18 @@ def angle_between(v1, v2):
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 class EyeOnStickEnv3D(EyeOnStickEnv):
-    def __init__(self, N_JOINTS, params):
+    def __init__(self, N_JOINTS, params, gui=False):
         assert N_JOINTS % 2 == 0
         self.NS = int(N_JOINTS/2)
         
         sq22 = np.sqrt(2) / 2
-        self.T_LOW  = 0.5 + sq22 # half meter elevation from the base + one 45 degrees + others horizontal
-        self.T_HIGH = 0.5 + (self.NS - 2) + sq22 # same plus all links upright but one
+        Z_LOW  = 0.5 + sq22 # half meter elevation from the base + one 45 degrees + others horizontal
+        Z_HIGH = 0.5 + (self.NS - 2) + sq22 # same plus all links upright but one
+        
+        self.T_LOW = np.array([3, -1, Z_LOW])
+        self.T_HIGH = np.array([3, +1, Z_HIGH])
 
-        self.w = World(gui=False)
+        self.w = World(gui)
         #self.side_cam = FixedCamera(self.w, np.array(((5,0,0.5), (-1,0,0), (0,0,1))))
         self.side_cam = FixedCamera(self.w, np.array(((1.5, -4, 1.5), (0, 1, 0), (0, 0, 1))))
         self.m = Manipulator(self.w, self.NS, 1, 1, style=Manipulator.STYLES[0])
@@ -44,8 +47,8 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
             
     def set_1dof_target(self, t):
         # invoked from reset
-        self.target_pos = np.array([3, 0, t]) # change y shift only
-        #logger.debug('target_pos %s' % str(self.target_pos))
+        self.target_pos = t
+        logger.debug(f"{self.__class__.__name__}.set_1dof_target: {t}")
         self.w.setTarget(self.target_pos)
         
     def step(self, actions):
@@ -64,10 +67,10 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
             self._phi[i] = self.gearfuncs[i](self.phi[i])
         #----
         
-        _phi2 = self._phi.reshape(self.NS, 2)
-        _phi2[:, 1] = 0
-        # move the motor
-        self.m.step(_phi2)
+        # move the motors
+        _phi = self._phi.reshape(self.NS, 2)
+        #_phi[:, 1] = 0 ## dirty hack to glue the robot to XZ plane
+        self.m.step(_phi)
         
         # calculate angle of view towards the target and eye level
         p, v, _u = self.eye_cam.getPVU()        

@@ -50,7 +50,7 @@ class EyeOnStickEnv(gym.Env):
         self.nresets = 0
         self.nsteps = 0
                 
-        logger.debug(f'EyeOnStickEnv NJ={N_JOINTS}, T_LOW={self.T_LOW}, T_HIGH={self.T_HIGH}')
+        logger.debug(f'{self.__class__.__name__}.__init__: NJ={N_JOINTS}, T_LOW={self.T_LOW}, T_HIGH={self.T_HIGH}')
         #self.reset()
 
     def set_1dof_target(self):
@@ -65,6 +65,7 @@ class EyeOnStickEnv(gym.Env):
         else:
                 t = np.random.uniform(low=self.T_LOW, high=self.T_HIGH)
 
+        logger.debug(f"{self.__class__.__name__}.set_random_target: {t}")
         self.set_1dof_target(t)
         
     def set_zero_pose(self):
