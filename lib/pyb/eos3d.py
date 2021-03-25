@@ -64,8 +64,10 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         # --- FIXME REFACTOR AWAY
         if self.alpha is not None:
             prev_alpha = self.alpha
+            prev_alpha_cm = self.alpha_cm
         else:
             prev_alpha = None
+            prev_alpha_cm = None
 
         self._phi = np.zeros((self.N_JOINTS)) # this is a real (relative) angle, but it is not an observation, only a metric
         for i in range(self.N_JOINTS):
@@ -106,7 +108,7 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
                 2 * target_cm[1] / target_mask.shape[1] - 1
             ])
         else:
-            self.alpha_cm = None
+            self.alpha_cm = np.array([0, 0])
         #logger.debug("alpha_cm=%s" % str(self.alpha_cm))
             
         # old way
@@ -115,8 +117,10 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         # --- FIXME REFACTOR AWAY
         if prev_alpha is not None:
             self.dalpha = self.alpha - prev_alpha
+            self.dalpha_cm = self.alpha_cm - prev_alpha_cm
         else:
             self.dalpha = 0
+            self.dalpha_cm = np.array([0, 0])
         #----
 
     def render(self, mode='rgb_array'):

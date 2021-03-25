@@ -43,8 +43,8 @@ class EyeOnStickEnv(gym.Env):
         # action space: positive or negative angular acceleration per joint
         self.action_space = spaces.Box(low=-1, high=1, shape=(self.N_JOINTS,), dtype=np.float32)
 
-        # observation space: alpha, dalpha and phi, dpi per joint. each is represented by sin, cos pair.        
-        nobs = 2 * (2 + 2 * self.N_JOINTS) 
+        # observation space: (alpha_cm, dalpha_cm) + (((alpha, dalpha) + (phi, dpi) per joint) each is represented by sin, cos pair)
+        nobs = 2 * 2 + 2 * (2 + 2 * self.N_JOINTS) 
         self.observation_space = spaces.Box(low=-1, high=1, shape=(nobs,), dtype=np.float32)
         
         self.nresets = 0
@@ -108,10 +108,12 @@ class EyeOnStickEnv(gym.Env):
         obs_angles.extend(self.phi)
         obs_angles.extend(self.dphi)
         
-        obs_sin_cos = []
+        # combine .alpha_cm, .dalpha_cm with sin/cos of the angles
+        obss = self.alpha_cm.tolist() + self.dalpha_cm.tolist()
         for x in obs_angles:
-            obs_sin_cos.extend([np.cos(x), np.sin(x)])
-        return np.array(obs_sin_cos).astype(np.float32)
+            obss += [np.cos(x), np.sin(x)]
+            
+        return np.array(obss).astype(np.float32)
 
     def step(self, actions):
         # convert to np.array and do sanity check
@@ -220,8 +222,8 @@ class EyeOnStickEnv(gym.Env):
         def r2d(r): return r / np.pi * 180
 
         with np.printoptions(precision=4, sign='+'):
-            draw_text(draw, (10, LINE_HEIGHT), "nresets %5d, nsteps %3d, aplha° %7.2f, eye_level° %7.2f"
-                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_level)))
+            draw_text(draw, (10, LINE_HEIGHT), "nresets %5d, nsteps %3d, aplha° %7.2f, eye_level° %7.2f, alpha_cm %s"
+                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_level), self.alpha_cm))
             draw_text(draw, (10, 2*LINE_HEIGHT), "last_actions %s" % (self.info['last_actions']))
             draw_text(draw, (10, 3*LINE_HEIGHT), "phi° %s" % (r2d(self.phi)))
             draw_text(draw, (10, 4*LINE_HEIGHT), "dphi° %s" % (r2d(self.dphi)))
