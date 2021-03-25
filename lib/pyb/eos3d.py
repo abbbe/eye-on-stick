@@ -36,7 +36,7 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
 
         self.w = World(gui=False)
         #self.side_cam = FixedCamera(self.w, np.array(((5,0,0.5), (-1,0,0), (0,0,1))))
-        self.side_cam = FixedCamera(self.w, np.array(((1.5, 4, 1.5), (0, -1, 0), (0, 0, 1))))
+        self.side_cam = FixedCamera(self.w, np.array(((1.5, -4, 1.5), (0, 1, 0), (0, 0, 1))))
         self.m = Manipulator(self.w, self.NS, 1, 1, style=Manipulator.STYLES[0])
         self.eye_cam = LinkedCamera(self.w, self.m.body_id, self.m.eye_link_id)
 
@@ -60,12 +60,14 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
             prev_alpha = None
 
         self._phi = np.zeros((self.N_JOINTS)) # this is a real (relative) angle, but it is not an observation, only a metric
-        for i in range(1, self.N_JOINTS + 1):
-            self._phi[i-1] = self.gearfuncs[i - 1](self.phi[i - 1]) 
+        for i in range(self.N_JOINTS):
+            self._phi[i] = self.gearfuncs[i](self.phi[i])
         #----
         
+        _phi2 = self._phi.reshape(self.NS, 2)
+        _phi2[:, 1] = 0
         # move the motor
-        self.m.step(self._phi.reshape(self.NS, 2))
+        self.m.step(_phi2)
         
         # calculate angle of view towards the target and eye level
         p, v, _u = self.eye_cam.getPVU()        
@@ -89,7 +91,9 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         #----
 
     def render(self, mode='rgb_array'):
-        return self.side_cam.getRGBAImage()[...,:-1]
+        side = self.side_cam.getRGBAImage()[...,:-1]
+        eye = self.eye_cam.getRGBAImage()[...,:-1]
+        return np.hstack((side, eye))
 
 
     def close(self):
