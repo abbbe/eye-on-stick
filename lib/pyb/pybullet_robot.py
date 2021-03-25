@@ -162,7 +162,7 @@ class World(object):
                 #p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW, 0)
                 #p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW, 1)
 
-                p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=-60, cameraPitch=-10, cameraTargetPosition=[0, 0, 1])
+                #p.resetDebugVisualizerCamera(cameraDistance=3, cameraYaw=-90, cameraPitch=-10, cameraTargetPosition=[0, 0, 1])
             else:
                 p.connect(p.DIRECT) # don't render
 
@@ -202,6 +202,12 @@ class World(object):
         self.loadBody("urdfs/marker.urdf", pos)
 
 # --------------------------------------------------------------------
+    #def getDebugVisualizerCameraRGBAImage(self):
+    #    width, height, viewMat, projMat, cameraUp, camForward, horizon, vertical, _, _, dist, camTarget = p.getDebugVisualizerCamera()
+    #    width, height = 224, 224
+    #    imgs = p.getCameraImage(width, height, viewMat, projMat)
+    #    rgba = np.reshape(imgs[2], (height, width, 4)).astype(np.float32)
+    #    return rgba
 
     def orn2vu(self, cam_o):
         rot_matrix = p.getMatrixFromQuaternion(cam_o)

@@ -40,11 +40,12 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         self.w = World(gui)
         #self.side_cam = FixedCamera(self.w, np.array(((5,0,0.5), (-1,0,0), (0,0,1))))
         self.side_cam = FixedCamera(self.w, np.array(((1.5, -4, 1.5), (0, 1, 0), (0, 0, 1))))
+        self.back_cam = FixedCamera(self.w, np.array(((-3, -0.1, 1.5), (1, 0, 0), (0, 0, 1))))
         self.m = Manipulator(self.w, self.NS, 1, 1, style=Manipulator.STYLES[0])
         self.eye_cam = LinkedCamera(self.w, self.m.body_id, self.m.eye_link_id)
 
         super(EyeOnStickEnv3D, self).__init__(N_JOINTS, params)
-            
+
     def set_1dof_target(self, t):
         # invoked from reset
         self.target_pos = t
@@ -94,10 +95,13 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         #----
 
     def render(self, mode='rgb_array'):
-        side = self.side_cam.getRGBAImage()[...,:-1]
-        eye = self.eye_cam.getRGBAImage()[...,:-1]
-        return np.hstack((side, eye))
-
+        side = self.side_cam.getRGBAImage()
+        eye = self.eye_cam.getRGBAImage()
+        back = self.back_cam.getRGBAImage()
+        #debug = self.w.getDebugVisualizerCameraRGBAImage()
+        img = np.hstack((side, eye, back))[...,:-1]
+        #print(f'render(): img.shape={img.shape}')
+        return img
 
     def close(self):
         self.m.close()
