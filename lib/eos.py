@@ -50,13 +50,15 @@ class EyeOnStickEnv(gym.Env):
         self.nresets = 0
         self.nsteps = 0
                 
-        logger.debug(f'{self.__class__.__name__}.__init__: NJ={N_JOINTS}, T_LOW={self.T_LOW}, T_HIGH={self.T_HIGH}')
+        #logger.debug(f'{self.__class__.__name__}.__init__: NJ={N_JOINTS}, T_LOW={self.T_LOW}, T_HIGH={self.T_HIGH}')
         #self.reset()
 
     def set_target(self, _t):
         raise NotImplementedError()
         
     def set_random_target(self):
+        #print('T_LOW=', self.T_LOW)
+        #print('T_HIGH=', self.T_HIGH)
         if np.random.choice([True, False]):
             if np.random.choice([True, False]):
                 t = self.T_LOW
@@ -93,7 +95,11 @@ class EyeOnStickEnv(gym.Env):
             #self.gearfuncs.append(lambda x: sigma2(-PHI_AMP, PHI_AMP, x, 25))
             self.gearfuncs.append(f)
         
-        self.set_random_target()
+        if 'TARGET_POS' in self.params:
+            self.set_target(self.params['TARGET_POS'])
+        else:
+            self.set_random_target()
+            
         self.set_random_pose()
         #self.set_zero_pose()
         
@@ -109,10 +115,14 @@ class EyeOnStickEnv(gym.Env):
         obs_angles.extend(self.dphi)
         
         # combine .alpha_cm, .dalpha_cm with sin/cos of the angles
-        obss = self.alpha_cm.tolist() + self.dalpha_cm.tolist()
+        obss = self.alpha_cm.tolist()
+        #print('obss1=', obss)
+        obss.extend(self.dalpha_cm.tolist())
+        #print('obss2=', obss)
         for x in obs_angles:
-            obss += [np.cos(x), np.sin(x)]
+            obss.extend([np.cos(x), np.sin(x)])
             
+        #print('obss=', obss)
         return np.array(obss).astype(np.float32)
 
     def step(self, actions):
@@ -222,14 +232,15 @@ class EyeOnStickEnv(gym.Env):
         def r2d(r): return r / np.pi * 180
 
         with np.printoptions(precision=4, sign='+'):
-            draw_text(draw, (10, LINE_HEIGHT), "nresets %5d, nsteps %3d, aplha° %7.2f, eye_level° %7.2f, alpha_cm %s"
-                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_level), self.alpha_cm))
-            draw_text(draw, (10, 2*LINE_HEIGHT), "last_actions %s" % (self.info['last_actions']))
-            draw_text(draw, (10, 3*LINE_HEIGHT), "phi° %s" % (r2d(self.phi)))
-            draw_text(draw, (10, 4*LINE_HEIGHT), "dphi° %s" % (r2d(self.dphi)))
-        draw_text(draw, (10, 5*LINE_HEIGHT), "info %s" % (str(self.info['info'])))
-        draw_text(draw, (10, 6*LINE_HEIGHT), (str(self.render_info)))
-        draw_text(draw, (10, 7*LINE_HEIGHT), self.actions_log)
+            draw_text(draw, (10, LINE_HEIGHT), "nresets %5d, nsteps %3d, aplha° %7.2f, eye_level° %7.2f"
+                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_level)))
+            draw_text(draw, (10, 2*LINE_HEIGHT), "alpha_cm %s" % (self.alpha_cm))
+            draw_text(draw, (10, 3*LINE_HEIGHT), "last_actions %s" % (self.info['last_actions']))
+            draw_text(draw, (10, 4*LINE_HEIGHT), "phi° %s" % (r2d(self.phi)))
+            draw_text(draw, (10, 5*LINE_HEIGHT), "dphi° %s" % (r2d(self.dphi)))
+        draw_text(draw, (10, 6*LINE_HEIGHT), "info %s" % (str(self.info['info'])))
+        draw_text(draw, (10, 7*LINE_HEIGHT), (str(self.render_info)))
+        draw_text(draw, (10, 8*LINE_HEIGHT), self.actions_log)
 
         return np.asarray(image)
 

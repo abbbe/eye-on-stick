@@ -58,17 +58,34 @@ def draw_text(draw, pos, txt, c=eos.TEXT_COLOR):
             
 class EyeOnStickEnv2D(EyeOnStickEnv):
     def __init__(self, N_JOINTS, params):
-        # target range depends on number of joints and number of dimensions, for 2D case:
-        self.T_LOW, self.T_HIGH = 0.7, (N_JOINTS-1) + .7
-        self.target_x = xxx
+        Y_LOW, Y_HIGH = 0.7, (N_JOINTS-1) + .7
+        
+        if 'T_LOW' in params and 'T_HIGH' in params:
+            self.T_LOW = [params['T_LOW'], Y_LOW]
+            self.T_HIGH = [params['T_HIGH'], Y_HIGH]
+        else:
+            self.T_LOW = self.T_HIGH = None
         
         super(EyeOnStickEnv2D, self).__init__(N_JOINTS, params)
 
-    def set_1dof_target(self, t):
-        self.target_y = t
+    def set_target(self, t):
+        self.target_x, self.target_y = t
             
-    def recalc(self):            
-        # -- orientation of joints and position of the endpoints - used for reward calculation and rendering, not an observatio
+    def apply_phi(self):            
+        # --- FIXME REFACTOR AWAY
+        if self.alpha is not None:
+            prev_alpha = self.alpha
+            prev_alpha_cm = self.alpha_cm
+        else:
+            prev_alpha = None
+            prev_alpha_cm = None
+
+        self._phi = np.zeros((self.N_JOINTS)) # this is a real (relative) angle, but it is not an observation, only a metric
+        for i in range(self.N_JOINTS):
+            self._phi[i] = self.gearfuncs[i](self.phi[i])
+        #----
+
+        # -- orientation of joints and position of the endpoints - used for reward calculation and rendering, not an observation
         angle = 0 # real cumulative angle, not an observation
         
         self.joints = np.zeros((self.N_JOINTS + 1, 2)) # real XY coordinates of the endpoints, used by render(), not an observation
@@ -84,22 +101,26 @@ class EyeOnStickEnv2D(EyeOnStickEnv):
         # -- eye position and orientation - used for reward calculation and rendering, not an observation
         self.eye_x = self.joints[-1][0] # real XY coordinates of the eye
         self.eye_y = self.joints[-1][1]        
-        self.eye_level = angle - np.pi/2 # cumulative angle of the last joint becomes eye orientation
+        self.eye_phi = angle # cumulative angle of the last joint becomes eye orientation
         
         # -- alpha and dalpha - an observation, also used for reward calculation
         dx = self.target_x - self.eye_x
         dy = self.target_y - self.eye_y
-        
-        if self.alpha is not None:
-            prev_alpha = self.alpha
-        else:
-            prev_alpha = None
+                
         self.alpha = np.arctan2(dx, dy) - self.eye_phi
+        self.alpha_cm = np.array([self.alpha / np.pi]) # scaled to [-1, 1]
+        self.eye_level = self.eye_phi - np.pi/2
+        
+        # --- FIXME REFACTOR AWAY
         if prev_alpha is not None:
             self.dalpha = self.alpha - prev_alpha
+            self.dalpha_cm = self.alpha_cm - prev_alpha_cm
         else:
             self.dalpha = 0
+            self.dalpha_cm = np.array([0])
+        #----
 
+##############
     def render(self, mode='rgb_array'):
         image = Image.new('RGB', SCREEN_SIZE, BG_COLOR)
         draw = ImageDraw.Draw(image)
@@ -116,7 +137,8 @@ class EyeOnStickEnv2D(EyeOnStickEnv):
             draw_text(draw, xy2pxy(0, 1), "y", c=AXIS_COLOR)
         
         # draw rectangular area where target can appear
-        draw_rect(draw, eos.X_LOW, self.Y_LOW, eos.X_HIGH, self.Y_HIGH, c=TARGET_BOX_COLOR)
+        if self.T_LOW is not None and self.T_HIGH is not None:
+            draw_rect(draw, self.T_LOW[0], self.T_LOW[1], self.T_HIGH[0], self.T_HIGH[1], c=TARGET_BOX_COLOR)
                 
         # draw the sticks-and-circles robot, based on joint coordinates stashed by recalc()
         x1 = self.joints[0, 0]

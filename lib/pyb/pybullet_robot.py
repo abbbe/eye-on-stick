@@ -30,11 +30,11 @@ class Manipulator:
         self.w = w
         self.NS = NS
         self.NP = NP
-        self.NA = NP
+        self.NA = NA
         self.style = style
         
         urdf_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
-        URDFPrinter().print_manipulator(urdf_file, self.NS, self.NP, self.style, scale=1.0/0.028/2)
+        URDFPrinter().print_manipulator(urdf_file, self.NS, self.NP, self.style, scale=1.0/0.028/2/self.NP)
         urdf_file.close()
         
         self.body_id = self.w.loadBody(urdf_file.name)
