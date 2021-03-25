@@ -20,7 +20,7 @@ CAMERA_SPECS = (224, 224, 45) # https://www.chiefdelphi.com/t/horizontal-fov-of-
 
 class Manipulator:    
     STYLES = [
-#        {'name': 'wire0',     'plate_radius': 0.0025, 'plate_length': 0.04, 'plate0_color': 'Red', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Transparent'},
+        {'name': 'wire0',    'plate_radius': 0.0025, 'plate_length': 0.05, 'plate0_color': 'Red', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Transparent'},
         {'name': 'wire',     'plate_radius': 0.01, 'plate_length': 0.056, 'plate0_color': 'Black', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Transparent'},
         {'name': 'original', 'plate_radius': 0.1, 'plate_length': 0.01,   'plate0_color': 'Black', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Black' },
         {'name': 'fat',      'plate_radius': 0.05 , 'plate_length': 2*0.028, 'plate0_color': 'Black', 'plate_color': 'Black', 'block1_color': 'Transparent', 'block2_color': 'Transparent', 'camera_color': 'Transparent'}
@@ -34,7 +34,7 @@ class Manipulator:
         self.style = style
         
         urdf_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
-        URDFPrinter().print_manipulator(urdf_file, self.NS, self.NP, self.style)
+        URDFPrinter().print_manipulator(urdf_file, self.NS, self.NP, self.style, scale=1.0/0.028/2)
         urdf_file.close()
         
         self.body_id = self.w.loadBody(urdf_file.name)
@@ -65,10 +65,13 @@ class Manipulator:
         for i in range(self.NS):
             self._setJointPosition(i, phis[i, 0], phis[i, 1])
 
-    def _print_joints_pos(self):
-        for i in range(p.getNumJoints(self.body_id)):
-            js = p.getJointState(self.body_id, i)
-            pos, orn, _, _, _, _ = p.getLinkState(self.body_id, i)
+    def _print_joints_pos(self, body_id=None):
+        if body_id is None:
+            body_id = self.body_id
+            
+        for i in range(p.getNumJoints(body_id)):
+            js = p.getJointState(body_id, i)
+            pos, orn, _, _, _, _ = p.getLinkState(body_id, i)
 
             rot_matrix = p.getMatrixFromQuaternion(orn)
             rot_matrix = np.array(rot_matrix).reshape(3, 3)
@@ -78,8 +81,9 @@ class Manipulator:
             print("#B%d %s %s" % (i, pos, v))
 
     def close(self):
-        p.removeBody(self.body_id)
-        self.body_id = None
+        if self.body_id is not None:
+            p.removeBody(self.body_id)
+            self.body_id = None
 
 # --------------------------------------------------------------------
 
@@ -89,7 +93,7 @@ class Camera(object):
         self.W, self.H, self.FOVX = specs
         
         aspect = self.W / self.H
-        self.projection_matrix = p.computeProjectionMatrixFOV(self.FOVX/aspect, aspect, 0.1, 5)
+        self.projection_matrix = p.computeProjectionMatrixFOV(self.FOVX/aspect, aspect, 0.1, 15)
     
     def getImages(self, pvu):
         (cam_p, camera_vector, up_vector) = pvu
@@ -190,7 +194,7 @@ class World(object):
             p.removeBody(self.targetId)
             self.targetId = None
 
-        self.targetId = self.loadBody("target.urdf", pos)
+        self.targetId = self.loadBody("lib/pyb/urdfs/target.urdf", pos)
 
     def addHeadposMarker(self, pos):
         self.loadBody("urdfs/marker.urdf", pos)

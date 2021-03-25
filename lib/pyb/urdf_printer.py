@@ -161,10 +161,10 @@ class URDFPrinter():
 
   base_name = "SprutBase"
 
-  def print_manipulator(self, f, NS, NP, style=DEFAULT_STYLE):
+  def print_manipulator(self, f, NS, NP, style=DEFAULT_STYLE, scale=1):
     self.print_header(f, "Manipulator")
-    last_plate = self.print_manipulator_body(f, NS, NP, style)
-    self.print_manipulator_camera(f, last_plate, style)
+    last_plate = self.print_manipulator_body(f, NS, NP, style, scale)
+    self.print_manipulator_camera(f, last_plate, style, scale)
     self.print_footer(f)
 
   def print_cage(self, f):
@@ -183,7 +183,7 @@ class URDFPrinter():
   def print_footer(self, f):
     print(self.footer,file = f)
     
-  def print_manipulator_body(self, f, NS, NP, style):
+  def print_manipulator_body(self, f, NS, NP, style, scale):
     """
     Prints all segments of the manipulator's body
     Returns the name of the very last link (to mount the camera on)
@@ -205,18 +205,18 @@ class URDFPrinter():
 
       print(self.section_template % {
         'parent': parent, 'index': i,
-        'block1_size': '0.02 0.025 0.005', # '0.023 0.023 0.005',
+        'block1_size': f'{0.02*scale} {0.025*scale} {0.005*scale}', # '0.023 0.023 0.005',
         'block1_color': style['block1_color'],
-        'block2_size': '0.025 0.020 0.005', # '0.023 0.023 0.005',
+        'block2_size': f'{0.025*scale} {0.020*scale} {0.005*scale}', # '0.023 0.023 0.005',
         'block2_color': style['block2_color'],
         'plate_color': plate_color,
-        'plate_radius': style['plate_radius'],
-        'plate_length': style['plate_length'],
-        'joint_z': JD}, file=f)
+        'plate_radius': style['plate_radius']*scale,
+        'plate_length': style['plate_length']*scale,
+        'joint_z': JD*scale}, file=f)
 
     return "Plate%d" % (NJ-1)
 
-  def print_manipulator_camera(self, f, parent_link, style):
+  def print_manipulator_camera(self, f, parent_link, style, scale):
     print(self.manipulator_camera_template % {
       "parent_link": parent_link,
       "size": 0.005,

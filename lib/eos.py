@@ -11,12 +11,14 @@ from lib.fuzz import mk_monotonic_f
 
 import lib.init
 
+import logging
+logger = logging.getLogger()
+
 ## --- CONST --------------------------------------------
 
 BASE_X = -2
 BASE_Y = 0
 
-X_LOW, X_HIGH = 3, 3
 VX_LOW, VX_HIGH = 0, 0 # -0.01, 0.01
 VY_LOW, VY_HIGH = 0, 0 # -0.05, 0.05
 
@@ -25,8 +27,6 @@ LINE_HEIGHT = 15
 
 PHI_AMP = (np.pi/180) * 45 # angle: up to 45 degrees in total
 DPHI_AMP = (np.pi/180) * 0.5 # angular speed: up to half degrees per step
-
-EYE_PHI_GOAL = np.pi/2 # desired orientation of the eye - to the right
 
 def draw_text(draw, pos, txt, c=TEXT_COLOR): # FIXME - dup with eos2d
     draw.text(pos, txt, fill=c)
@@ -39,9 +39,6 @@ class EyeOnStickEnv(gym.Env):
         self.stick_len = 1.0        
         self.N_JOINTS = N_JOINTS
         self.params = params
-        
-        # Y limits depend on number of joints
-        self.Y_LOW, self.Y_HIGH = 0.7, (self.N_JOINTS-2) + .7
 
         # action space: positive or negative angular acceleration per joint
         self.action_space = spaces.Box(low=-1, high=1, shape=(self.N_JOINTS,), dtype=np.float32)
@@ -53,24 +50,23 @@ class EyeOnStickEnv(gym.Env):
         self.nresets = 0
         self.nsteps = 0
                 
-        self.reset()
+        logger.debug(f'EyeOnStickEnv NJ={N_JOINTS}, T_LOW={self.T_LOW}, T_HIGH={self.T_HIGH}')
+        #self.reset()
 
+    def set_1dof_target(self):
+        raise NotImplementedError()
+        
     def set_random_target(self):
-        # special case for target distance from the floor
-        # with 50% likelihood take one of the extreme points or something random in between
         if np.random.choice([True, False]):
             if np.random.choice([True, False]):
-                y = self.Y_LOW
+                t = self.T_LOW
             else:
-                y = self.Y_HIGH
+                t = self.T_HIGH
         else:
-                y = np.random.uniform(low=self.Y_LOW, high=self.Y_HIGH)
+                t = np.random.uniform(low=self.T_LOW, high=self.T_HIGH)
 
-        self.target_x = np.random.uniform(low=X_LOW, high=X_HIGH)
-        self.target_y = y # np.random.uniform(low=self.Y_LOW, high=self.Y_HIGH)
-        self.target_vx = np.random.uniform(low=VX_LOW, high=VX_HIGH)
-        self.target_vy = np.random.uniform(low=VY_LOW, high=VY_HIGH)
-            
+        self.set_1dof_target(t)
+        
     def set_zero_pose(self):
         self.phi = np.zeros((self.N_JOINTS))
         self.dphi = np.zeros((self.N_JOINTS))
@@ -86,7 +82,7 @@ class EyeOnStickEnv(gym.Env):
 
         self.nsteps = 0
         self.actions_log = ""
-        self.info = dict(info="", last_actions=[], alpha=None, eye_phi=None)
+        self.info = dict(info="", last_actions=[], alpha=None, eye_level=None)
 
         # take other set of random gearfuncs, one for each joint
         self.gearfuncs = []
@@ -100,7 +96,8 @@ class EyeOnStickEnv(gym.Env):
         self.set_random_pose()
         #self.set_zero_pose()
         
-        self.recalc()
+        self.alpha = None # to allow consistent .dalpha calculations
+        self.apply_phi()
         
         return self.get_obs()
 
@@ -122,19 +119,18 @@ class EyeOnStickEnv(gym.Env):
         
         self.nsteps += 1
         
-        # the target bounces between the floor and the ceiling
-        self.target_x += self.target_vx
-        self.target_y += self.target_vy
-        
-        # bounce between the floor and the ceiling
-        if self.target_y < self.Y_LOW:
-            self.target_y = self.Y_LOW
-            self.target_vy = np.abs(self.target_vy)
-        elif self.target_y > self.Y_HIGH:
-            self.target_y = self.Y_HIGH
-            self.target_vy = - np.abs(self.target_vy)
+        if False:
+            # the target bounces between the floor and the ceiling
+            self.target_x += self.target_vx
+            self.target_y += self.target_vy
 
-        self.recalc() # update .alpha and .phi for rewards calculations and possibly rendering
+            # bounce between the floor and the ceiling
+            if self.target_y < self.Y_LOW:
+                self.target_y = self.Y_LOW
+                self.target_vy = np.abs(self.target_vy)
+            elif self.target_y > self.Y_HIGH:
+                self.target_y = self.Y_HIGH
+                self.target_vy = - np.abs(self.target_vy)
             
         # update phis and dphis according to the given actions, impose limits        
         for i in range(actions.shape[0]):
@@ -155,7 +151,6 @@ class EyeOnStickEnv(gym.Env):
             self.dphi[phis_above_max] = 0
             self.dphi[phis_below_min] = 0
 
-        for i in range(actions.shape[0]):
             # append to the action log
             if actions[i] > 0:
                 action_char = '+'
@@ -164,21 +159,26 @@ class EyeOnStickEnv(gym.Env):
             else:
                 action_char = 'o'
             self.actions_log += action_char
-            
+
         # format action log: add space between individual moves and add new line after 27 moves
         self.actions_log += ' '
         if self.nsteps % 15 == 0:
             self.actions_log += '\n'
                 
-        # -- calculate reward based on .alpha and .eye_phi
+        self.apply_phi()
+        # turns .phi into ._phi by applying gearfunc()
+        # sets the angles of the joints to .phi
+        # updates .alpha and .eye_level for rewards calculations
+
+        # -- calculate reward based on .alpha and .eye_level
         
         # good aim is rewarded if the eye points to the target plus/minus ALPHA_MAXDIFF_GOAL
         reward_aim = bool(np.abs(self.alpha) < (np.pi/180) * self.params.get('ALPHA_MAXDIFF_GOAL'))
         
-        # good eye level is rewarded if it falls inside EYE_PHI_MAXDIFF_GOAL plus/minus ALPHA_MAXDIFF_GOAL open interval
-        if self.params.get('EYE_PHI_MAXDIFF_GOAL', None):
+        # good eye level is rewarded if the eye level (error) is plus-minus EYE_LEVEL_MAXDIFF_GOAL
+        if self.params.get('EYE_LEVEL_MAXDIFF_GOAL', None):
             # reward if eye phi is close enough to the goal value
-            reward_level = bool(np.abs(self.eye_phi - EYE_PHI_GOAL) < (np.pi/180) * self.params.get('EYE_PHI_MAXDIFF_GOAL'))
+            reward_level = bool(np.abs(self.eye_level) < (np.pi/180) * self.params.get('EYE_LEVEL_MAXDIFF_GOAL'))
         else:
             # this parameter is unset - tolerate any eye lelev
             reward_level = True
@@ -194,7 +194,7 @@ class EyeOnStickEnv(gym.Env):
 
         # stash data for metrics and monitoring
         self.info = dict(
-            alpha=self.alpha, eye_phi=self.eye_phi,
+            alpha=self.alpha, eye_level=self.eye_level,
             last_actions=actions, 
             info=f"done={done}, reward={reward:7.4f} (aim={reward_aim}, level={reward_level}, action={reward_action})",
             traj=np.vstack((self.phi, self._phi, self.dphi))) # (3, NJ)
@@ -203,7 +203,7 @@ class EyeOnStickEnv(gym.Env):
     def set_render_info(self, info):
         self.render_info = info
 
-    def recalc(self):
+    def apply_phi(self):
         raise NotImplementedError()
     
     def render(self, mode='rgb_array'):
@@ -219,8 +219,8 @@ class EyeOnStickEnv(gym.Env):
         def r2d(r): return r / np.pi * 180
 
         with np.printoptions(precision=4, sign='+'):
-            draw_text(draw, (10, LINE_HEIGHT), "nresets %5d, nsteps %3d, aplha° %7.2f, eye_phi° %7.2f"
-                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_phi)))
+            draw_text(draw, (10, LINE_HEIGHT), "nresets %5d, nsteps %3d, aplha° %7.2f, eye_level° %7.2f"
+                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_level)))
             draw_text(draw, (10, 2*LINE_HEIGHT), "last_actions %s" % (self.info['last_actions']))
             draw_text(draw, (10, 3*LINE_HEIGHT), "phi° %s" % (r2d(self.phi)))
             draw_text(draw, (10, 4*LINE_HEIGHT), "dphi° %s" % (r2d(self.dphi)))

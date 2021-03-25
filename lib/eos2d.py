@@ -58,16 +58,15 @@ def draw_text(draw, pos, txt, c=eos.TEXT_COLOR):
             
 class EyeOnStickEnv2D(EyeOnStickEnv):
     def __init__(self, N_JOINTS, params):
+        # target range depends on number of joints and number of dimensions, for 2D case:
+        self.T_LOW, self.T_HIGH = 0.7, (N_JOINTS-1) + .7
+        self.target_x = xxx
+        
         super(EyeOnStickEnv2D, self).__init__(N_JOINTS, params)
-        
-        # Y limits depend on number of joints
-        self.Y_LOW, self.Y_HIGH = 0.7, (self.N_JOINTS-2) + .7
-        
-    def reset(self):
-        self.alpha = None # to allow consistent .dalpha calculations
-        
-        return super(EyeOnStickEnv2D, self).reset()
-    
+
+    def set_1dof_target(self, t):
+        self.target_y = t
+            
     def recalc(self):            
         # -- orientation of joints and position of the endpoints - used for reward calculation and rendering, not an observatio
         angle = 0 # real cumulative angle, not an observation
@@ -85,7 +84,7 @@ class EyeOnStickEnv2D(EyeOnStickEnv):
         # -- eye position and orientation - used for reward calculation and rendering, not an observation
         self.eye_x = self.joints[-1][0] # real XY coordinates of the eye
         self.eye_y = self.joints[-1][1]        
-        self.eye_phi = angle # cumulative angle of the last joint become eye orientation
+        self.eye_level = angle - np.pi/2 # cumulative angle of the last joint becomes eye orientation
         
         # -- alpha and dalpha - an observation, also used for reward calculation
         dx = self.target_x - self.eye_x
