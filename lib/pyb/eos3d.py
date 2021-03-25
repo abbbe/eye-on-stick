@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import ndimage
 
 import logging
 logger = logging.getLogger()
@@ -36,6 +37,9 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         
         self.T_LOW = np.array([3, -1, Z_LOW])
         self.T_HIGH = np.array([3, +1, Z_HIGH])
+        
+        self.T_CENTER_LOW = np.array([3, 0, Z_LOW])
+        self.T_CENTER_HIGH = np.array([3, 0, Z_HIGH])
 
         self.w = World(gui)
         #self.side_cam = FixedCamera(self.w, np.array(((5,0,0.5), (-1,0,0), (0,0,1))))
@@ -46,12 +50,12 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
 
         super(EyeOnStickEnv3D, self).__init__(N_JOINTS, params)
 
-    def set_1dof_target(self, t):
+    def set_target(self, t): # shape of t will match shapes of .T_LOW/.T_HIGH
         # invoked from reset
         self.target_pos = t
-        logger.debug(f"{self.__class__.__name__}.set_1dof_target: {t}")
+        logger.debug(f"{self.__class__.__name__}.set_target: {t}")
         self.w.setTarget(self.target_pos)
-        
+                
     def step(self, actions):
         obs = super(EyeOnStickEnv3D, self).step(actions)
         return obs
@@ -68,23 +72,44 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
             self._phi[i] = self.gearfuncs[i](self.phi[i])
         #----
         
-        # move the motors
+        # --- move the motors
         _phi = self._phi.reshape(self.NS, 2)
         #_phi[:, 1] = 0 ## dirty hack to glue the robot to XZ plane
         self.m.step(_phi)
         
-        # calculate angle of view towards the target and eye level
-        p, v, _u = self.eye_cam.getPVU()        
-        # eye_level is an angle with the horizontal plane
-        if v[0] == 0.0 and v[1] == 0.0:
-            v_xy = [1, 0, 0] # any vector on xy plane will do
-        else:
-            v_xy = [v[0], v[1], 0] # projection of v on the horizontal plane
-        tvec = self.target_pos - p
+        # --- calculate the eye level
+        p, v, _u = self.eye_cam.getPVU()
         
+        # get v_xy - (not normalized) projection of vector v on xy plane
+        if v[0] == 0.0 and v[1] == 0.0:
+            # corner case - projection is a single point, but any vector on xy plane will do in this case
+            v_xy = [1, 0, 0]
+        else:
+            # projection of v on the horizontal plane
+            v_xy = [v[0], v[1], 0]
+        self.eye_level = angle_between(v, v_xy)
+        
+        tvec = self.target_pos - p        
+        #self.alpha = angle_between(v, tvec)
         #print('p=', p, 'v=', v, 'v_xy=', v_xy, 'target=', self.target_pos, 'tvec=', tvec)
         
-        self.eye_level = angle_between(v, v_xy)
+        
+        # --- calculate deviation of the target from the center
+        target_mask = self.eye_cam.getBodyMask(self.w.targetId)
+        #print('target_mask', target_mask)
+        if np.any(target_mask):
+            target_cm = ndimage.measurements.center_of_mass(target_mask)
+            #print('target_cm', target_cm)
+            #logger.debug("target_cm=%s" % str(target_cm))
+            self.alpha_cm = np.array([
+                2 * target_cm[0] / target_mask.shape[0] - 1,
+                2 * target_cm[1] / target_mask.shape[1] - 1
+            ])
+        else:
+            self.alpha_cm = None
+        #logger.debug("alpha_cm=%s" % str(self.alpha_cm))
+            
+        # old way
         self.alpha = angle_between(v, tvec)
         
         # --- FIXME REFACTOR AWAY

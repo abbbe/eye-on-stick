@@ -88,18 +88,23 @@ class Manipulator:
 # --------------------------------------------------------------------
 
 class Camera(object):
-    def __init__(self, w, specs=CAMERA_SPECS):            
+    def __init__(self, w, specs=CAMERA_SPECS):
         self.w = w
         self.W, self.H, self.FOVX = specs
         
         aspect = self.W / self.H
         self.projection_matrix = p.computeProjectionMatrixFOV(self.FOVX/aspect, aspect, 0.1, 15)
     
-    def getImages(self, pvu):
+    def getImages(self, pvu, with_segmask=False):
         (cam_p, camera_vector, up_vector) = pvu
 
         view_matrix = p.computeViewMatrix(cam_p, cam_p + 0.1 * camera_vector, up_vector)
-        imgs = p.getCameraImage(self.W, self.H, view_matrix, self.projection_matrix)
+        
+        if with_segmask:
+            renderer = p.ER_TINY_RENDERER
+        else:
+            renderer = 0
+        imgs = p.getCameraImage(self.W, self.H, view_matrix, self.projection_matrix, renderer=renderer)
         assert((self.W, self.H) == (imgs[0], imgs[1]))
 
         return imgs
@@ -127,6 +132,18 @@ class Camera(object):
         pvu = self.getPVU()
         img = self.getRGBAImagePVU(pvu)
         return img
+    
+    def getBodyMask(self, body_id):
+        pvu = self.getPVU()
+        imgs = self.getImages(pvu, with_segmask=True)
+        segmask = np.reshape(imgs[4], (self.H, self.W)).astype(np.float32)
+        
+        #print('body_id=', body_id, 'np.unique(segmask)=', np.unique(segmask))
+        
+        segmask[segmask != body_id] = 0
+        segmask[segmask == body_id] = 1
+        
+        return segmask
     
     def close(self):
         pass

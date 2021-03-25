@@ -53,7 +53,7 @@ class EyeOnStickEnv(gym.Env):
         logger.debug(f'{self.__class__.__name__}.__init__: NJ={N_JOINTS}, T_LOW={self.T_LOW}, T_HIGH={self.T_HIGH}')
         #self.reset()
 
-    def set_1dof_target(self):
+    def set_target(self, _t):
         raise NotImplementedError()
         
     def set_random_target(self):
@@ -65,8 +65,8 @@ class EyeOnStickEnv(gym.Env):
         else:
                 t = np.random.uniform(low=self.T_LOW, high=self.T_HIGH)
 
-        logger.debug(f"{self.__class__.__name__}.set_random_target: {t}")
-        self.set_1dof_target(t)
+        #logger.debug(f"{self.__class__.__name__}.set_random_target: {t}")
+        self.set_target(t)
         
     def set_zero_pose(self):
         self.phi = np.zeros((self.N_JOINTS))
