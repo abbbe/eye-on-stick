@@ -45,7 +45,7 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         #self.side_cam = FixedCamera(self.w, np.array(((5,0,0.5), (-1,0,0), (0,0,1))))
         self.side_cam = FixedCamera(self.w, np.array(((1.5, -4, 1.5), (0, 1, 0), (0, 0, 1))))
         self.back_cam = FixedCamera(self.w, np.array(((-3, -0.1, 1.5), (1, 0, 0), (0, 0, 1))))
-        self.m = Manipulator(self.w, self.NS, 4, style=Manipulator.STYLES[0])
+        self.m = Manipulator(self.w, self.NS, params['NP'], style=Manipulator.STYLES[0])
         self.eye_cam = LinkedCamera(self.w, self.m.body_id, self.m.eye_link_id)
 
         super(EyeOnStickEnv3D, self).__init__(N_JOINTS, params)
@@ -63,10 +63,8 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
     def apply_phi(self):            
         # --- FIXME REFACTOR AWAY
         if self.alpha is not None:
-            prev_alpha = self.alpha
             prev_alpha_cm = self.alpha_cm
         else:
-            prev_alpha = None
             prev_alpha_cm = None
 
         self._phi = np.zeros((self.N_JOINTS)) # this is a real (relative) angle, but it is not an observation, only a metric
@@ -90,13 +88,14 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
             # projection of v on the horizontal plane
             v_xy = [v[0], v[1], 0]
         self.eye_level = angle_between(v, v_xy)
-        
+
+        # --- calculate angle between the camera view vector and direction to the target, for reward calculations only
         tvec = self.target_pos - p        
-        #self.alpha = angle_between(v, tvec)
+        self.alpha = angle_between(v, tvec)
         #print('p=', p, 'v=', v, 'v_xy=', v_xy, 'target=', self.target_pos, 'tvec=', tvec)
         
         
-        # --- calculate deviation of the target from the center
+        # --- calculate center mass of the target .alpha_cm and .alpha_cm_value (=1 if the target is in view, 0 otherwise)
         target_mask = self.eye_cam.getBodyMask(self.w.targetId)
         #print('target_mask', target_mask)
         if np.any(target_mask):
@@ -107,19 +106,18 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
                 2 * target_cm[0] / target_mask.shape[0] - 1,
                 2 * target_cm[1] / target_mask.shape[1] - 1
             ])
+            self.alpha_cm_value = 1
         else:
             self.alpha_cm = np.array([0, 0])
-        #logger.debug("alpha_cm=%s" % str(self.alpha_cm))
+            self.alpha_cm_value = 0
             
-        # old way
-        self.alpha = angle_between(v, tvec)
+        #logger.debug("alpha_cm=%s" % str(self.alpha_cm))            
+        #self.alpha = angle_between(v, tvec)
         
         # --- FIXME REFACTOR AWAY
-        if prev_alpha is not None:
-            self.dalpha = self.alpha - prev_alpha
+        if prev_alpha_cm is not None:
             self.dalpha_cm = self.alpha_cm - prev_alpha_cm
         else:
-            self.dalpha = 0
             self.dalpha_cm = np.array([0, 0])
         #----
 

@@ -43,8 +43,8 @@ class EyeOnStickEnv(gym.Env):
         # action space: positive or negative angular acceleration per joint
         self.action_space = spaces.Box(low=-1, high=1, shape=(self.N_JOINTS,), dtype=np.float32)
 
-        # observation space: (alpha_cm, dalpha_cm) two coordinate each + (phi, dpi) per joint each is represented by sin-cos pair
-        nobs = 2 * 2 + 2 * 2 * self.N_JOINTS
+        # observation space: (alpha_cm, dalpha_cm) two coordinate each + alpha_cm_value (scalar) + (phi, dpi) per joint each is represented by sin-cos pair
+        nobs = 2 * 2 + 1 + 2 * 2 * self.N_JOINTS
         self.observation_space = spaces.Box(low=-1, high=1, shape=(nobs,), dtype=np.float32)
         
         self.nresets = 0
@@ -109,10 +109,10 @@ class EyeOnStickEnv(gym.Env):
         return self.get_obs()
 
     def get_obs(self):
-        # .alpha_cm, .dalpha_cm & cos/sin of .phi and .dhi
+        # .alpha_cm, .dalpha_cm pairs of coords & .alpha_cm_value scalar & cos/sin of .phi and .dhi
         obs_angles = np.hstack((self.phi, self.dphi))
         obs_angles = np.hstack((np.cos(obs_angles), np.sin(obs_angles)))
-        obss = np.hstack((self.alpha_cm, self.dalpha_cm, obs_angles))
+        obss = np.hstack((self.alpha_cm_value, self.alpha_cm, self.dalpha_cm, obs_angles))
         return np.array(obss).astype(np.float32)
 
     def step(self, actions):
