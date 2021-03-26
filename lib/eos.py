@@ -43,8 +43,8 @@ class EyeOnStickEnv(gym.Env):
         # action space: positive or negative angular acceleration per joint
         self.action_space = spaces.Box(low=-1, high=1, shape=(self.N_JOINTS,), dtype=np.float32)
 
-        # observation space: (alpha_cm, dalpha_cm) + (((alpha, dalpha) + (phi, dpi) per joint) each is represented by sin, cos pair)
-        nobs = 2 * 2 + 2 * (2 + 2 * self.N_JOINTS) 
+        # observation space: (alpha_cm, dalpha_cm) two coordinate each + (phi, dpi) per joint each is represented by sin-cos pair
+        nobs = 2 * 2 + 2 * 2 * self.N_JOINTS
         self.observation_space = spaces.Box(low=-1, high=1, shape=(nobs,), dtype=np.float32)
         
         self.nresets = 0
@@ -109,20 +109,10 @@ class EyeOnStickEnv(gym.Env):
         return self.get_obs()
 
     def get_obs(self):
-        # prepare normalized observations
-        obs_angles = [self.alpha, self.dalpha]
-        obs_angles.extend(self.phi)
-        obs_angles.extend(self.dphi)
-        
-        # combine .alpha_cm, .dalpha_cm with sin/cos of the angles
-        obss = self.alpha_cm.tolist()
-        #print('obss1=', obss)
-        obss.extend(self.dalpha_cm.tolist())
-        #print('obss2=', obss)
-        for x in obs_angles:
-            obss.extend([np.cos(x), np.sin(x)])
-            
-        #print('obss=', obss)
+        # .alpha_cm, .dalpha_cm & cos/sin of .phi and .dhi
+        obs_angles = np.hstack((self.phi, self.dphi))
+        obs_angles = np.hstack((np.cos(obs_angles), np.sin(obs_angles)))
+        obss = np.hstack((self.alpha_cm, self.dalpha_cm, obs_angles))
         return np.array(obss).astype(np.float32)
 
     def step(self, actions):
