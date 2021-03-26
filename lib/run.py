@@ -1,8 +1,38 @@
 import numpy as np
+import os, json
+
+from scipy.stats import t as stats_t
+
+os.environ["MLFLOW_TRACKING_URI"] = "sqlite:///mlruns/db.sqlite"
+import mlflow
+mlflow_client = mlflow.tracking.MlflowClient()
+
+from stable_baselines import SAC
+from stable_baselines.common.vec_env import VecNormalize
+from stable_baselines.common.cmd_util import make_vec_env
 
 from lib.viz import showarray
 
-from scipy.stats import t as stats_t
+def mk_env_agent(env_class, model_name, params, model_version=None, gui=False):
+    if model_version is not None:
+        registered_model = mlflow_client.get_model_version(model_name, model_version)
+    else:
+        registered_model = mlflow_client.get_latest_versions(model_name, stages=["None"])[0]
+    # registered_model .source, .version
+    
+    model = SAC.load(registered_model.source)
+
+    params_fname = f'{registered_model.source}.json' # FIXME
+    with open(params_fname, 'r') as fp:
+        loaded_params = json.load(fp)
+
+    params = {**loaded_params, **params} # merge, overriding loaded params 
+    env = make_vec_env(lambda: env_class(params['NJ'], params, gui=gui), n_envs=1)
+    
+    model.set_env(env)
+    env.env_method('set_render_info', {'name': model_name, 'version': model_version, 'real_version': registered_model.version}) # FIXME
+    
+    return env, model
 
 def run_env_nsteps(env, model, nsteps, displayfunc=showarray, trajfunc=None):
     all_alphas, all_eye_levels, all_rewards = [], [], []
