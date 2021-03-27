@@ -30,6 +30,7 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
     def __init__(self, N_JOINTS, params, gui=False):
         assert N_JOINTS % 2 == 0
         self.NS = int(N_JOINTS/2)
+        self.NP = params.get('NP', 1)
         
         sq22 = np.sqrt(2) / 2
         Z_LOW  = 0.5 + sq22 # half meter elevation from the base + one 45 degrees + others horizontal
@@ -45,17 +46,18 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         #self.side_cam = FixedCamera(self.w, np.array(((5,0,0.5), (-1,0,0), (0,0,1))))
         self.side_cam = FixedCamera(self.w, np.array(((1.5, -4, 1.5), (0, 1, 0), (0, 0, 1))))
         self.back_cam = FixedCamera(self.w, np.array(((-3, -0.1, 1.5), (1, 0, 0), (0, 0, 1))))
-        self.m = Manipulator(self.w, self.NS, params['NP'], style=Manipulator.STYLES[0])
+        self.m = Manipulator(self.w, self.NS, self.NP, style=Manipulator.STYLES[0])
         self.eye_cam = LinkedCamera(self.w, self.m.body_id, self.m.eye_link_id)
 
         super(EyeOnStickEnv3D, self).__init__(N_JOINTS, params)
 
     def set_target(self, t): # shape of t will match shapes of .T_LOW/.T_HIGH
         # invoked from reset
-        self.target_pos = t
+        super(EyeOnStickEnv3D, self).set_target(t)
+        
         logger.debug(f"{self.__class__.__name__}.set_target: {t}")
         self.w.setTarget(self.target_pos)
-                
+    
     def step(self, actions):
         obs = super(EyeOnStickEnv3D, self).step(actions)
         return obs
@@ -67,9 +69,10 @@ class EyeOnStickEnv3D(EyeOnStickEnv):
         else:
             prev_alpha_cm = None
 
-        self._phi = np.zeros((self.N_JOINTS)) # this is a real (relative) angle, but it is not an observation, only a metric
-        for i in range(self.N_JOINTS):
-            self._phi[i] = self.gearfuncs[i](self.phi[i])
+        if self.gearfunc:
+            self._phi = self.gearfunc(self.phi)
+        else:
+            self._phi = self.phi
         #----
         
         # --- move the motors

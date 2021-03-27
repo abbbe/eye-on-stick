@@ -11,15 +11,16 @@ from stable_baselines import SAC
 from stable_baselines.common.vec_env import VecNormalize
 from stable_baselines.common.cmd_util import make_vec_env
 
-from lib.viz import showarray
-
-def mk_env_agent(env_class, model_name, params, model_version=None, gui=False):
+def find_model(model_name, model_version=None):
     if model_version is not None:
         registered_model = mlflow_client.get_model_version(model_name, model_version)
     else:
         registered_model = mlflow_client.get_latest_versions(model_name, stages=["None"])[0]
     # registered_model .source, .version
     
+    return registered_model
+    
+def mk_env_agent(env_class, registered_model, params, gui=False):
     model = SAC.load(registered_model.source)
 
     params_fname = f'{registered_model.source}.json' # FIXME
@@ -30,11 +31,11 @@ def mk_env_agent(env_class, model_name, params, model_version=None, gui=False):
     env = make_vec_env(lambda: env_class(params['NJ'], params, gui=gui), n_envs=1)
     
     model.set_env(env)
-    env.env_method('set_render_info', {'name': model_name, 'version': model_version, 'real_version': registered_model.version}) # FIXME
+    env.env_method('set_render_info', {'name': registered_model.name, 'version': registered_model.version}) # FIXME
     
     return env, model
 
-def run_env_nsteps(env, model, nsteps, displayfunc=showarray, trajfunc=None):
+"""
     all_alphas, all_eye_levels, all_rewards = [], [], []
 
     def get_metrics():
@@ -47,24 +48,51 @@ def run_env_nsteps(env, model, nsteps, displayfunc=showarray, trajfunc=None):
             "reward_total": np.sum(all_rewards),
             "reward_mean": np.mean(all_rewards), "reward_std": np.std(all_rewards)
         }
+               
+    #metrics = get_metrics()
+    #№return metrics, dict(all_alphas=all_alphas, all_eye_levels=all_eye_levels, all_rewards=all_rewards)
+"""
 
+def nsteps_env_agent(env, model, nsteps, displayfunc=None):
+    all_obs = []
+    all_rewards = []
+    all_dones = None
+    all_infos = []
+    all_imgs = []
+    
+    def stash_imgs():
+        if displayfunc is not None or all_imgs is not None:
+            imgs_array = env.render(mode='rgb_array')
+            #print('imgs_array.shape=', imgs_array.shape)
+            if displayfunc is not None:
+                displayfunc(imgs_array)
+            if all_imgs is not None:
+                all_imgs.append(imgs_array)
+
+        if all_infos is not None:
+            all_infos.extend(infos)
+            
+        #print('all_imgs.shape=', all_imgs.shape)
+    
     obs = env.reset()
+    #stash_imgs() FIXME we skip first image, but maybe we should drop last one instead? or let it be +1
+    
     for _ in range(nsteps):
-        if displayfunc is not None:
-            displayfunc(env.render(mode='rgb_array'))
-
         actions, _ = model.predict(obs, deterministic=True)
         obs, rewards, dones, infos = env.step(actions)
 
-        for info in infos:
-            all_alphas.append(info['alpha'])
-            all_eye_levels.append(info['eye_level'])
-            if trajfunc is not None:
-                # if trajectory callback is set, call it XXX multiple times per vector env FIXME
-                trajfunc(info['traj'])
-        all_rewards.append(rewards)
-        
-            
-    metrics = get_metrics()
+        stash_imgs()
 
-    return metrics, dict(all_alphas=all_alphas, all_eye_levels=all_eye_levels, all_rewards=all_rewards)
+        if all_obs is not None:
+            all_obs.extend(obs)
+
+        if all_rewards is not None:
+            all_rewards.extend(rewards)
+
+        if all_dones is not None:
+            all_dones.extend(dones)
+
+        if all_infos is not None:
+            all_infos.extend(infos)
+            
+    return all_obs, all_rewards, all_dones, all_infos, all_imgs

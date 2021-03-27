@@ -49,12 +49,20 @@ class EyeOnStickEnv(gym.Env):
         
         self.nresets = 0
         self.nsteps = 0
-                
+            
+        self.gearfunc = lambda phi: phi
+            
         #logger.debug(f'{self.__class__.__name__}.__init__: NJ={N_JOINTS}, T_LOW={self.T_LOW}, T_HIGH={self.T_HIGH}')
         #self.reset()
 
-    def set_target(self, _t):
-        raise NotImplementedError()
+    def set_target(self, t):
+        self.target_pos = t
+
+    def get_target(self):
+        return self.target_pos
+        
+    def set_gearfunc(self, gearfunc):
+        self.gearfunc = gearfunc
         
     def set_random_target(self):
         #print('T_LOW=', self.T_LOW)
@@ -70,6 +78,13 @@ class EyeOnStickEnv(gym.Env):
         #logger.debug(f"{self.__class__.__name__}.set_random_target: {t}")
         self.set_target(t)
         
+    def get_pose(self):
+        return (self.phi, self.dphi)
+        
+    def set_pose(self, pose):
+        np.phi, np.dphi = pose
+        self._phi = None
+
     def set_zero_pose(self):
         self.phi = np.zeros((self.N_JOINTS))
         self.dphi = np.zeros((self.N_JOINTS))
@@ -80,36 +95,31 @@ class EyeOnStickEnv(gym.Env):
         self.dphi = np.random.uniform(low=-DPHI_AMP, high=DPHI_AMP, size=(self.N_JOINTS))        
         self._phi = None
             
-    def reset(self):
+    def reset(self, pose=None, target_pos=None):
+        #print("RESET CALLED")
         self.nresets += 1
 
         self.nsteps = 0
         self.actions_log = ""
         self.info = dict(info="", last_actions=[], alpha=None, eye_level=None)
-
-        # take other set of random gearfuncs, one for each joint
-        self.gearfuncs = []
-        for i in range(self.N_JOINTS):
-            noise = self.params.get('GEAR_FUNC_NOISE', 0)
-            f = mk_monotonic_f(noise=noise, low=-PHI_AMP, high=PHI_AMP)
-            #self.gearfuncs.append(lambda x: sigma2(-PHI_AMP, PHI_AMP, x, 25))
-            self.gearfuncs.append(f)
         
-        if 'TARGET_POS' in self.params:
-            self.set_target(self.params['TARGET_POS'])
+        if pose is not None:
+            self.set_pose(pose)
+        else:
+            self.set_random_pose()
+            
+        if target_pos is not None:
+            self.set_target(target_pos)
         else:
             self.set_random_target()
             
-        self.set_random_pose()
-        #self.set_zero_pose()
-        
         self.alpha = None # to allow consistent .dalpha calculations
         self.apply_phi()
         
         return self.get_obs()
 
     def get_obs(self):
-        # .alpha_cm, .dalpha_cm pairs of coords & .alpha_cm_value scalar & cos/sin of .phi and .dhi
+        # .alpha_cm, .dalpha_cm pairs of coords & .alpha_cm_value scalar & cos/sin of .phi and .dphi
         obs_angles = np.hstack((self.phi, self.dphi))
         obs_angles = np.hstack((np.cos(obs_angles), np.sin(obs_angles)))
         obss = np.hstack((self.alpha_cm_value, self.alpha_cm, self.dalpha_cm, obs_angles))
@@ -196,11 +206,10 @@ class EyeOnStickEnv(gym.Env):
             reward = 0
 
         # stash data for metrics and monitoring
-        self.info = dict(
-            alpha=self.alpha, eye_level=self.eye_level,
-            last_actions=actions, 
-            info=f"done={done}, reward={reward:7.4f} (aim={reward_aim}, level={reward_level}, action={reward_action})",
-            traj=np.vstack((self.phi, self._phi, self.dphi))) # (3, NJ)
+        self.info = dict(alpha=self.alpha, eye_level=self.eye_level, reward=reward,
+                        traj=np.vstack((self.phi, self._phi, self.dphi)))
+#            info=f"done={done}, reward={reward:7.4f} (aim={reward_aim}, level={reward_level}, action={reward_action})",
+#            traj=np.vstack((self.phi, self._phi, self.dphi))) # (3, NJ)
         return self.get_obs(), reward, done, self.info
 
     def set_render_info(self, info):
@@ -214,25 +223,6 @@ class EyeOnStickEnv(gym.Env):
             raise NotImplementedError()
             
         raise NotImplementedError()
-
-    def render_step_dashboard(self, SCREEN_SIZE=(224*2, 224), BG_COLOR=None, LINE_HEIGHT=15):    
-        image = Image.new('RGB', SCREEN_SIZE, BG_COLOR)
-        draw = ImageDraw.Draw(image)
-
-        def r2d(r): return r / np.pi * 180
-
-        with np.printoptions(precision=4, sign='+'):
-            draw_text(draw, (10, LINE_HEIGHT), "nresets %5d, nsteps %3d, aplha° %7.2f, eye_level° %7.2f"
-                  % (self.nresets, self.nsteps, r2d(self.alpha), r2d(self.eye_level)))
-            draw_text(draw, (10, 2*LINE_HEIGHT), "alpha_cm %s" % (self.alpha_cm))
-            draw_text(draw, (10, 3*LINE_HEIGHT), "last_actions %s" % (self.info['last_actions']))
-            draw_text(draw, (10, 4*LINE_HEIGHT), "phi° %s" % (r2d(self.phi)))
-            draw_text(draw, (10, 5*LINE_HEIGHT), "dphi° %s" % (r2d(self.dphi)))
-        draw_text(draw, (10, 6*LINE_HEIGHT), "info %s" % (str(self.info['info'])))
-        draw_text(draw, (10, 7*LINE_HEIGHT), (str(self.render_info)))
-        draw_text(draw, (10, 8*LINE_HEIGHT), self.actions_log)
-
-        return np.asarray(image)
 
     def close(self):
         pass
